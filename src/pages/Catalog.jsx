@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { ShoppingBag, SlidersHorizontal, Search } from 'lucide-react';
+import { MessageSquare, SlidersHorizontal, Search } from 'lucide-react';
 import { DataService, subscribeToRealtime } from '../services/dataService';
 import SEO from '../components/SEO';
 
@@ -45,25 +45,7 @@ export default function Catalog({ onOpenCart }) {
     }
   }, [searchParams]);
 
-  const addToCart = (product) => {
-    try {
-      const cartRaw = localStorage.getItem('carrillo_cart');
-      const cart = cartRaw ? JSON.parse(cartRaw) : [];
-      const index = cart.findIndex(item => item.id === product.id);
-      
-      if (index !== -1) {
-        cart[index].quantity += 1;
-      } else {
-        cart.push({ ...product, quantity: 1 });
-      }
-      
-      localStorage.setItem('carrillo_cart', JSON.stringify(cart));
-      window.dispatchEvent(new Event('cart_updated'));
-      onOpenCart();
-    } catch (e) {
-      console.error(e);
-    }
-  };
+
 
   // Filtrado y Ordenación
   const filteredProducts = products.filter(prod => {
@@ -197,7 +179,7 @@ export default function Catalog({ onOpenCart }) {
       ) : (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+          gridTemplateColumns: 'repeat(3, 1fr)',
           gap: '30px'
         }}>
           {filteredProducts.map((prod) => (
@@ -229,15 +211,16 @@ export default function Catalog({ onOpenCart }) {
                 </span>
               )}
 
-              <Link to={`/product/${prod.id}`} style={{ display: 'block', height: '340px', overflow: 'hidden' }}>
+              <Link to={`/product/${prod.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '400px', overflow: 'hidden', backgroundColor: '#F8F8F8' }}>
                 <img 
                   src={prod.image_url} 
                   alt={prod.name} 
                   style={{
                     width: '100%',
                     height: '100%',
-                    objectFit: 'cover',
-                    transition: 'transform 0.8s cubic-bezier(0.16, 1, 0.3, 1)'
+                    objectFit: 'contain',
+                    transition: 'transform 0.8s cubic-bezier(0.16, 1, 0.3, 1)',
+                    padding: '8px'
                   }}
                   onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'}
                   onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
@@ -259,23 +242,29 @@ export default function Catalog({ onOpenCart }) {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex' }}>
                   <Link 
                     to={`/product/${prod.id}`}
-                    className="btn-secondary"
-                    style={{ flex: 1, fontSize: '13px', padding: '10px', textAlign: 'center', borderRadius: '0px' }}
-                  >
-                    Detalle
-                  </Link>
-                  <button 
-                    onClick={() => addToCart(prod)}
                     className="btn-primary"
-                    disabled={prod.stock === 0}
-                    style={{ flex: 1, fontSize: '13px', padding: '10px', borderRadius: '0px' }}
+                    style={{
+                      flex: 1,
+                      fontSize: '13px',
+                      padding: '10px',
+                      textAlign: 'center',
+                      borderRadius: '0px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      backgroundColor: prod.stock === 0 ? '#CBD5E1' : 'var(--text-primary)',
+                      color: '#FFF',
+                      textDecoration: 'none',
+                      fontWeight: 600
+                    }}
                   >
-                    <ShoppingBag size={14} />
-                    {prod.stock === 0 ? 'Sin Stock' : 'Agregar'}
-                  </button>
+                    <MessageSquare size={14} />
+                    {prod.stock === 0 ? 'AGOTADO' : 'PEDIR POR WHATSAPP'}
+                  </Link>
                 </div>
               </div>
             </div>

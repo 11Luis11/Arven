@@ -1048,11 +1048,11 @@ export default function POS() {
                   </div>
                 </div>
 
-                {/* Selector de Color */}
+                {/* Selector de Color con Stock Detallado */}
                 {freshProd.colors?.length > 0 && (
                   <div>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px' }}>Color del Polo</label>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                       {freshProd.colors.map(c => {
                         const isSelected = selectedColor?.hex === c.hex;
                         return (
@@ -1060,21 +1060,23 @@ export default function POS() {
                             key={c.hex}
                             type="button"
                             onClick={() => setSelectedColor(c)}
-                            title={`${c.name} (Stock: ${c.stock} uds)`}
                             style={{
-                              padding: '6px 12px',
+                              padding: '8px 14px',
                               border: isSelected ? '2px solid var(--text-primary)' : '1px solid var(--border-color)',
-                              backgroundColor: '#FFF',
+                              backgroundColor: isSelected ? 'var(--bg-secondary)' : '#FFF',
                               fontSize: '12px',
                               cursor: c.stock <= 0 ? 'not-allowed' : 'pointer',
                               opacity: c.stock <= 0 ? 0.4 : 1,
                               display: 'flex',
                               alignItems: 'center',
-                              gap: '6px'
+                              gap: '8px',
+                              fontWeight: isSelected ? 700 : 400,
+                              transition: 'all 0.15s ease'
                             }}
                           >
-                            <span style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: c.hex, border: '1px solid rgba(0,0,0,0.1)' }} />
-                            <span>{c.name} ({c.stock})</span>
+                            <span style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: c.hex, border: '1px solid rgba(0,0,0,0.15)', flexShrink: 0 }} />
+                            <span>{c.name}</span>
+                            <span style={{ fontSize: '10px', fontWeight: 700, backgroundColor: c.stock > 0 ? '#DEF7EC' : '#FDE8E8', color: c.stock > 0 ? '#03543F' : '#9B1C1C', padding: '2px 6px', borderRadius: '10px', marginLeft: '2px' }}>{c.stock}</span>
                           </button>
                         );
                       })}
@@ -1082,42 +1084,83 @@ export default function POS() {
                   </div>
                 )}
 
-                {/* Selector de Talla */}
+                {/* Selector de Talla con Stock Visible */}
                 {freshProd.sizes?.length > 0 && (
                   <div>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px' }}>Talla</label>
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                       {freshProd.sizes.map(size => {
                         const isSelected = selectedSize === size;
                         const sizeStock = selectedColor && selectedColor.sizes_stock
-                          ? (selectedColor.sizes_stock[size] !== undefined ? selectedColor.sizes_stock[size] : 0)
+                          ? (selectedColor.sizes_stock[size] || 0)
                           : 0;
+                        const hasStock = sizeStock > 0;
                         return (
                           <button
                             key={size}
                             type="button"
                             onClick={() => setSelectedSize(size)}
                             style={{
-                              padding: '8px 12px',
+                              padding: '8px 14px',
                               border: isSelected ? '2px solid var(--text-primary)' : '1px solid var(--border-color)',
                               backgroundColor: isSelected ? 'var(--text-primary)' : '#FFF',
-                              color: isSelected ? '#FFF' : 'var(--text-primary)',
-                              cursor: 'pointer',
-                              fontSize: '12px',
+                              color: isSelected ? '#FFF' : (hasStock ? 'var(--text-primary)' : '#CCC'),
+                              cursor: hasStock ? 'pointer' : 'not-allowed',
+                              opacity: hasStock ? 1 : 0.5,
+                              fontSize: '13px',
                               fontWeight: 600,
                               display: 'flex',
                               flexDirection: 'column',
-                              alignItems: 'center'
+                              alignItems: 'center',
+                              gap: '4px',
+                              minWidth: '50px',
+                              transition: 'all 0.15s ease'
                             }}
                           >
                             <span>{size}</span>
-                            {selectedColor && (
-                              <span style={{ fontSize: '9px', fontWeight: 'normal', opacity: 0.8 }}>({sizeStock})</span>
-                            )}
+                            <span style={{ fontSize: '10px', fontWeight: 700, opacity: 0.85 }}>
+                              {sizeStock > 0 ? `${sizeStock} uds` : 'Agotado'}
+                            </span>
                           </button>
                         );
                       })}
                     </div>
+
+                    {/* Tabla resumen rápido de stock por color/talla */}
+                    {freshProd.colors?.length > 0 && (
+                      <div style={{ marginTop: '12px', border: '1px solid var(--border-color)', fontSize: '11px', overflow: 'auto', maxHeight: '140px' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                              <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, backgroundColor: 'var(--bg-secondary)' }}>Color</th>
+                              {freshProd.sizes.map(s => (
+                                <th key={s} style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 600, borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, backgroundColor: 'var(--bg-secondary)' }}>{s}</th>
+                              ))}
+                              <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, backgroundColor: 'var(--bg-secondary)' }}>Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {freshProd.colors.map(c => (
+                              <tr key={c.hex} style={{ backgroundColor: selectedColor?.hex === c.hex ? '#F0F9FF' : 'transparent' }}>
+                                <td style={{ padding: '5px 10px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: c.hex, border: '1px solid rgba(0,0,0,0.1)', flexShrink: 0 }} />
+                                  {c.name}
+                                </td>
+                                {freshProd.sizes.map(s => {
+                                  const qty = c.sizes_stock ? (c.sizes_stock[s] || 0) : 0;
+                                  return (
+                                    <td key={s} style={{ padding: '5px 8px', textAlign: 'center', borderBottom: '1px solid var(--border-color)', fontWeight: qty > 0 ? 700 : 400, color: qty > 0 ? '#03543F' : '#CCC' }}>
+                                      {qty}
+                                    </td>
+                                  );
+                                })}
+                                <td style={{ padding: '5px 8px', textAlign: 'center', borderBottom: '1px solid var(--border-color)', fontWeight: 700 }}>{c.stock}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 )}
 

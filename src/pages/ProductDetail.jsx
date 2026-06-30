@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ShoppingBag, ArrowLeft, Shield, AlertTriangle, Star } from 'lucide-react';
+import { MessageSquare, ArrowLeft, Shield, AlertTriangle, Star } from 'lucide-react';
 import { DataService } from '../services/dataService';
 import SEO from '../components/SEO';
 
 export default function ProductDetail({ onOpenCart }) {
   const { id } = useParams();
   const [product, setProduct] = useState(null);
+  const [config, setConfig] = useState(null);
   const [recommended, setRecommended] = useState([]);
   const [activeImage, setActiveImage] = useState('');
   const [selectedSize, setSelectedSize] = useState('M');
@@ -30,6 +31,9 @@ export default function ProductDetail({ onOpenCart }) {
 
         if (found.colors && found.colors.length > 0) {
           setSelectedColor(found.colors[0]);
+          if (found.colors[0].image_url) {
+            setActiveImage(found.colors[0].image_url);
+          }
         } else {
           setSelectedColor(null);
         }
@@ -43,9 +47,11 @@ export default function ProductDetail({ onOpenCart }) {
         // Filtrar recomendados de la misma categoría, excluyendo el actual
         const similar = prods
           .filter(p => p.category_id === found.category_id && p.id !== found.id && p.active)
-          .slice(0, 4);
+          .slice(0, 3);
         setRecommended(similar);
       }
+      const cfg = await DataService.getConfig();
+      setConfig(cfg);
       setLoading(false);
     };
     fetchProduct();
@@ -54,47 +60,36 @@ export default function ProductDetail({ onOpenCart }) {
   const getSelectedCombinationStock = () => {
     if (!product) return 0;
     if (selectedColor) {
-      if (selectedColor.sizes_stock && selectedColor.sizes_stock[selectedSize] !== undefined) {
-        return selectedColor.sizes_stock[selectedSize];
+      if (product.sizes && product.sizes.length > 0) {
+        if (selectedColor.sizes_stock) {
+          return selectedColor.sizes_stock[selectedSize] || 0;
+        }
+        return 0;
       }
       return selectedColor.stock || 0;
     }
     return product.stock || 0;
   };
 
-  const addToCart = (prod = product) => {
-    if (!prod) return;
-    try {
-      const cartRaw = localStorage.getItem('carrillo_cart');
-      const cart = cartRaw ? JSON.parse(cartRaw) : [];
-      
-      const targetSize = prod.id === product.id ? selectedSize : (prod.sizes?.[0] || 'M');
-      const targetColor = prod.id === product.id ? selectedColor : (prod.colors?.[0] || null);
+  const buyViaWhatsApp = () => {
+    if (!product) return;
+    const phone = config?.footer?.whatsapp || '';
+    const cleanPhone = phone.replace(/\D/g, ''); // limpia números, quitando espacios, + y guiones
+    
+    // Obtener precio correspondiente (oferta o regular)
+    const activePrice = product.offer_price || product.price;
+    
+    const message = `Hola, me gustaría comprar este polo:
+🛍️ *Polo:* ${product.name}
+🎨 *Color:* ${selectedColor ? selectedColor.name : 'No especificado'}
+📏 *Talla:* ${selectedSize}
+💰 *Precio:* S/. ${activePrice.toFixed(2)}
 
-      const cartItemUniqueId = `${prod.id}-${targetSize}-${targetColor ? targetColor.hex : 'no-color'}`;
-      
-      const index = cart.findIndex(item => item.cartItemId === cartItemUniqueId);
-      
-      const cartItem = { 
-        ...prod,
-        cartItemId: cartItemUniqueId,
-        selectedSize: targetSize,
-        selectedColor: targetColor,
-        name: `${prod.name} ${targetColor ? targetColor.name.toUpperCase() : ''} (${targetSize})`
-      };
+¿Tienen stock disponible para coordinar la entrega?`;
 
-      if (index !== -1) {
-        cart[index].quantity += 1;
-      } else {
-        cart.push({ ...cartItem, quantity: 1 });
-      }
-      
-      localStorage.setItem('carrillo_cart', JSON.stringify(cart));
-      window.dispatchEvent(new Event('cart_updated'));
-      onOpenCart();
-    } catch (e) {
-      console.error(e);
-    }
+    const encodedText = encodeURIComponent(message);
+    const url = `https://wa.me/${cleanPhone || '51987654321'}?text=${encodedText}`;
+    window.open(url, '_blank');
   };
 
   // Lupa / Hover Zoom
@@ -173,7 +168,7 @@ export default function ProductDetail({ onOpenCart }) {
       }}>
         
         {/* GALERÍA DE IMÁGENES + ZOOM HOVER */}
-        <div style={{ display: 'flex', gap: '16px' }}>
+        <div style={{ display: 'flex', gap: '16px', position: 'sticky', top: '90px', alignSelf: 'start' }}>
           {/* Miniaturas */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {imageList.map((img, idx) => (
@@ -327,7 +322,7 @@ export default function ProductDetail({ onOpenCart }) {
 
           <div>
             <h3 style={{ fontSize: '14px', fontWeight: 500, marginBottom: '8px' }}>Descripción</h3>
-            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6, fontWeight: 300 }}>
+            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6, fontWeight: 300, whiteSpace: 'pre-wrap' }}>
               {product.description}
             </p>
           </div>
@@ -338,11 +333,14 @@ export default function ProductDetail({ onOpenCart }) {
               <h3 style={{ fontSize: '14px', fontWeight: 500, marginBottom: '12px' }}>Seleccionar Color: <span style={{ fontWeight: 'normal', color: 'var(--text-secondary)' }}>{selectedColor ? selectedColor.name : ''}</span></h3>
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                 {product.colors.map((c) => {
-                  const isSelected = selectedColor?.hex === c.hex;
+                  const isSelected = selectedColor?.hex?.toLowerCase() === c.hex?.toLowerCase();
                   return (
                     <button
                       key={c.hex}
-                      onClick={() => setSelectedColor(c)}
+                      onClick={() => {
+                        setSelectedColor(c);
+                        if (c.image_url) setActiveImage(c.image_url);
+                      }}
                       title={c.name}
                       style={{
                         width: '36px',
@@ -436,7 +434,7 @@ export default function ProductDetail({ onOpenCart }) {
 
           <div style={{ marginTop: '12px' }}>
             <button
-              onClick={() => addToCart()}
+              onClick={buyViaWhatsApp}
               disabled={getSelectedCombinationStock() === 0}
               className="btn-primary"
               style={{
@@ -447,11 +445,16 @@ export default function ProductDetail({ onOpenCart }) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '10px'
+                gap: '10px',
+                backgroundColor: getSelectedCombinationStock() === 0 ? '#CBD5E1' : '#25D366',
+                border: 'none',
+                color: '#FFF',
+                fontWeight: 700,
+                cursor: getSelectedCombinationStock() === 0 ? 'not-allowed' : 'pointer'
               }}
             >
-              <ShoppingBag size={18} />
-              {getSelectedCombinationStock() === 0 ? 'AGOTADO' : 'AÑADIR AL CARRITO'}
+              <MessageSquare size={18} />
+              {getSelectedCombinationStock() === 0 ? 'AGOTADO' : 'PEDIR POR WHATSAPP'}
             </button>
           </div>
 
@@ -483,30 +486,29 @@ export default function ProductDetail({ onOpenCart }) {
           </h2>
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gridTemplateColumns: 'repeat(3, 1fr)',
             gap: '24px'
           }}>
             {recommended.map(prod => (
               <div key={prod.id} className="hover-subtle" style={{ border: '1px solid var(--border-color)', backgroundColor: '#FFF', display: 'flex', flexDirection: 'column' }}>
-                <Link to={`/product/${prod.id}`} style={{ display: 'block', height: '280px', overflow: 'hidden' }}>
-                  <img src={prod.image_url} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <Link to={`/product/${prod.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '360px', overflow: 'hidden', backgroundColor: '#F8F8F8' }}>
+                  <img src={prod.image_url} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '8px', transition: 'transform 0.6s ease' }} onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'} onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'} />
                 </Link>
                 <div style={{ padding: '16px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                   <div>
                     <h3 style={{ fontSize: '14px', fontWeight: 500, marginBottom: '6px' }}>{prod.name}</h3>
                     <span style={{ fontSize: '14px', fontWeight: 600 }}>S/. {(prod.offer_price || prod.price).toFixed(2)}</span>
                   </div>
-                  <button 
-                    onClick={() => addToCart(prod)}
+                  <Link 
+                    to={`/product/${prod.id}`}
                     className="btn-primary"
-                    disabled={prod.stock === 0}
-                    style={{ width: '100%', fontSize: '12px', padding: '8px', marginTop: '12px', borderRadius: '0px' }}
+                    style={{ width: '100%', fontSize: '12px', padding: '10px', marginTop: '12px', borderRadius: '0px', textAlign: 'center', display: 'block', textDecoration: 'none', color: '#FFF' }}
                   >
-                    Agregar
-                  </button>
+                    Ver Detalle
+                  </Link>
                 </div>
               </div>
-            ))}
+            ))}  
           </div>
         </div>
       )}

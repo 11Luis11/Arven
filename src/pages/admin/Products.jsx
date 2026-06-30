@@ -48,12 +48,14 @@ export default function Products() {
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [newImageUrl, setNewImageUrl] = useState('');
+  const [editorTab, setEditorTab] = useState('general'); // 'general', 'prices', 'stock', 'images'
   const [uploading, setUploading] = useState(false);
   const [customColor, setCustomColor] = useState({ hex: '#CCCCCC', name: '' });
 
   const [isEditingCat, setIsEditingCat] = useState(false);
   const [catForm, setCatForm] = useState({ id: '', name: '', slug: '', description: '', image_url: '', active: true });
   const [catUploading, setCatUploading] = useState(false);
+  const [uploadingColorHex, setUploadingColorHex] = useState(null);
   const [msg, setMsg] = useState({ type: '', text: '' });
 
   const loadData = async () => {
@@ -137,6 +139,7 @@ export default function Products() {
   // --- PRODUCTOS ---
   const handleOpenCreate = () => {
     setForm({ ...EMPTY_FORM, category_id: categories[0]?.id || '', image_url: '', images: [], colors: [], sizes: ['S', 'M', 'L'] });
+    setEditorTab('general');
     setIsEditing(true);
   };
 
@@ -151,6 +154,7 @@ export default function Products() {
       colors: prod.colors || [],
       sizes: prod.sizes || [],
     });
+    setEditorTab('general');
     setIsEditing(true);
   };
 
@@ -176,9 +180,15 @@ export default function Products() {
     e.preventDefault();
     if (currentUser.role !== 'admin') { showMsg('error', 'No tienes permisos para guardar polos.'); return; }
     if (!form.name || !form.sku) { showMsg('error', 'Nombre y SKU son obligatorios.'); return; }
-    if (!form.category_id) { showMsg('error', 'Crea una categoría primero.'); return; }
+    
+    // Si no se ha seleccionado categoría, asignar la primera por defecto
+    const targetCategoryId = form.category_id || categories[0]?.id || '';
+    if (!targetCategoryId) { showMsg('error', 'Crea una categoría primero.'); return; }
+    
+    const colorImages = form.colors.map(col => col.image_url).filter(Boolean);
     const payload = {
       ...form,
+      category_id: targetCategoryId,
       price: parseFloat(form.price) || 0,
       offer_price: form.offer_price === '' ? null : parseFloat(form.offer_price) || null,
       wholesale_price: form.wholesale_price === '' ? null : parseFloat(form.wholesale_price) || null,
@@ -186,14 +196,20 @@ export default function Products() {
       stock: form.colors.length > 0
         ? form.colors.reduce((s, c) => s + c.stock, 0)
         : parseInt(form.stock) || 0,
-      images: form.images.length > 0 ? form.images : [form.image_url].filter(Boolean),
+      image_url: colorImages[0] || form.image_url || '',
+      images: colorImages.length > 0 ? colorImages : [form.image_url].filter(Boolean),
     };
     const isNew = !form.id;
-    await DataService.saveProduct(payload);
-    await loadData();
-    await DataService.addActionLog(`${isNew ? 'Creó' : 'Editó'} el polo "${payload.name}" (SKU: ${payload.sku})`, currentUser.name);
-    showMsg('success', 'Polo guardado.');
-    setIsEditing(false);
+    try {
+      await DataService.saveProduct(payload);
+      await loadData();
+      await DataService.addActionLog(`${isNew ? 'Creó' : 'Editó'} el polo "${payload.name}" (SKU: ${payload.sku})`, currentUser.name);
+      showMsg('success', 'Polo guardado con éxito.');
+      setIsEditing(false);
+    } catch (err) {
+      console.error(err);
+      showMsg('error', err.message || 'Error al guardar el polo.');
+    }
   };
 
   // --- CATEGORÍAS ---
@@ -287,140 +303,185 @@ export default function Products() {
           </div>
 
           {isEditing ? (
-            <div className="card" style={{ maxWidth: '960px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <h3 style={{ fontSize: '15px', fontWeight: 600 }}>{form.id ? 'Editar polo' : 'Nuevo polo'}</h3>
+            <div className="card" style={{ maxWidth: '800px', margin: '0 auto', width: '100%' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 600 }}>{form.id ? 'Editar polo' : 'Nuevo polo'}</h3>
                 <button onClick={() => setIsEditing(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
                   <X size={18} />
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '32px' }}>
-                  
-                  {/* Columna izquierda */}
+              {/* Sub-Tabs Form Navigation */}
+              <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', marginBottom: '24px', paddingBottom: '2px', flexWrap: 'wrap' }}>
+                {[
+                  { id: 'general', label: '1. Datos Básicos' },
+                  { id: 'prices', label: '2. Precios y Escalas' },
+                  { id: 'stock', label: '3. Tallas, Colores y Stock' }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setEditorTab(tab.id)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: editorTab === tab.id ? 'var(--color-primary)' : 'var(--text-secondary)',
+                      borderBottom: editorTab === tab.id ? '2px solid var(--color-primary)' : '2px solid transparent',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                
+                {/* TAB 1: DATOS BÁSICOS */}
+                {editorTab === 'general' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    
-                    {/* Nombre + SKU */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                       <div>
-                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px', color: 'var(--text-secondary)' }}>Nombre *</label>
-                        <input required style={inputStyle} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: 'var(--text-primary)' }}>Nombre del Polo *</label>
+                        <input required style={inputStyle} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Ej. Polo Oversize Pima" />
                       </div>
                       <div>
-                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px', color: 'var(--text-secondary)' }}>SKU *</label>
-                        <input required style={inputStyle} value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} />
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: 'var(--text-primary)' }}>Código SKU *</label>
+                        <input required style={inputStyle} value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} placeholder="Ej. POL-OVS-BLK" />
                       </div>
                     </div>
 
-                    {/* Categoría */}
                     <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px', color: 'var(--text-secondary)' }}>Categoría</label>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: 'var(--text-primary)' }}>Categoría</label>
                       <select style={inputStyle} value={form.category_id} onChange={e => setForm(f => ({ ...f, category_id: e.target.value }))}>
                         {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                     </div>
 
-                    {/* Descripción */}
                     <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px', color: 'var(--text-secondary)' }}>Descripción</label>
-                      <textarea style={{ ...inputStyle, resize: 'vertical' }} rows={3} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: 'var(--text-primary)' }}>Descripción (Permite saltos de línea)</label>
+                      <textarea 
+                        style={{ ...inputStyle, resize: 'vertical', minHeight: '120px' }} 
+                        placeholder="Ingresa la descripción del polo. Los saltos de línea se verán reflejados al cliente." 
+                        value={form.description} 
+                        onChange={e => setForm(f => ({ ...f, description: e.target.value }))} 
+                      />
                     </div>
 
-                    {/* Precios */}
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px', color: 'var(--text-secondary)' }}>Precios (S/.)</label>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
-                        {[['Precio regular *', 'price', true], ['Precio oferta', 'offer_price', false], ['Precio mayorista', 'wholesale_price', false]].map(([lbl, key, req]) => (
-                          <div key={key}>
-                            <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>{lbl}</label>
-                            <input type="number" step="0.01" required={req} placeholder={req ? '' : 'Opcional'} style={inputStyle}
-                              value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} />
-                          </div>
-                        ))}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                      <input type="checkbox" id="active-check" checked={form.active} onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+                      <label htmlFor="active-check" style={{ fontSize: '13px', cursor: 'pointer', fontWeight: 500 }}>Activo (visible en la tienda pública)</label>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 2: PRECIOS Y ESCALAS */}
+                {editorTab === 'prices' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: 'var(--text-primary)' }}>Precio Regular (S/.) *</label>
+                        <input type="number" step="0.01" required style={inputStyle} value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="Ej. 59.00" />
                       </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: 'var(--text-primary)' }}>Precio Oferta (S/.) <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal' }}>(Opcional)</span></label>
+                        <input type="number" step="0.01" style={inputStyle} value={form.offer_price} onChange={e => setForm(f => ({ ...f, offer_price: e.target.value }))} placeholder="Ej. 49.00" />
+                      </div>
+                    </div>
+
+                    {/* Múltiples Escalas por Mayor */}
+                    <div style={{ border: '1px solid var(--border-color)', padding: '16px', backgroundColor: 'var(--bg-primary)' }}>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                        Escalas de Descuento al por Mayor
+                      </label>
+                      <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+                        Define precios reducidos según la cantidad que lleve el cliente (ej. 6 unidades a S/.45, 12 a S/.40).
+                      </p>
                       
-                      {/* Múltiples Escalas por Mayor */}
-                      <div style={{ marginTop: '16px', border: '1px solid var(--border-color)', padding: '14px', backgroundColor: 'var(--bg-primary)' }}>
-                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                          Múltiples Promociones por Mayor (Escalas)
-                        </label>
-                        
-                        {(!form.wholesale_tiers || form.wholesale_tiers.length === 0) ? (
-                          <p style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic', marginBottom: '8px' }}>
-                            No hay escalas de descuento agregadas. Puedes agregar escalas abajo (ej. llevando 6, 12, 50, etc.).
-                          </p>
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
-                            {form.wholesale_tiers.map((tier, idx) => (
-                              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#FFF', padding: '6px 10px', border: '1px solid var(--border-color)' }}>
-                                <span style={{ fontSize: '12px', flex: 1 }}>
-                                  Llevando <strong>{tier.min_qty}</strong> o más a <strong>S/. {parseFloat(tier.price).toFixed(2)}</strong> c/u
-                                </span>
-                                <button type="button" onClick={() => {
-                                  const updatedTiers = form.wholesale_tiers.filter((_, i) => i !== idx);
-                                  setForm(f => ({
-                                    ...f,
-                                    wholesale_tiers: updatedTiers,
-                                    wholesale_price: updatedTiers[0]?.price || '',
-                                    wholesale_min_qty: updatedTiers[0]?.min_qty || ''
-                                  }));
-                                }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-secondary)', padding: '2px' }}>
-                                  ✕
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-                          <div style={{ flex: 1 }}>
-                            <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '3px' }}>Cantidad Mínima</label>
-                            <input id="new-tier-qty" type="number" min="1" placeholder="Ej. 6" style={inputStyle} />
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '3px' }}>Precio (S/.)</label>
-                            <input id="new-tier-price" type="number" step="0.01" min="0" placeholder="Ej. 45.00" style={inputStyle} />
-                          </div>
-                          <button type="button" onClick={() => {
-                            const qtyInput = document.getElementById('new-tier-qty');
-                            const priceInput = document.getElementById('new-tier-price');
-                            const qtyVal = parseInt(qtyInput?.value);
-                            const priceVal = parseFloat(priceInput?.value);
-                            if (qtyVal && priceVal) {
-                              const newTier = { min_qty: qtyVal, price: priceVal };
-                              const list = [...(form.wholesale_tiers || []), newTier];
-                              list.sort((a, b) => a.min_qty - b.min_qty);
-                              setForm(f => ({
-                                ...f,
-                                wholesale_tiers: list,
-                                wholesale_price: list[0]?.price || '',
-                                wholesale_min_qty: list[0]?.min_qty || ''
-                              }));
-                              qtyInput.value = '';
-                              priceInput.value = '';
-                            }
-                          }} className="btn-secondary" style={{ padding: '8px 12px', height: '36px', fontSize: '12px', whiteSpace: 'nowrap' }}>
-                            + Escala
-                          </button>
+                      {(!form.wholesale_tiers || form.wholesale_tiers.length === 0) ? (
+                        <p style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic', marginBottom: '12px', backgroundColor: '#FFF', padding: '10px', border: '1px dashed var(--border-color)' }}>
+                          No hay escalas configuradas. Añade una abajo.
+                        </p>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                          {form.wholesale_tiers.map((tier, idx) => (
+                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#FFF', padding: '8px 12px', border: '1px solid var(--border-color)' }}>
+                              <span style={{ fontSize: '12px', flex: 1, fontWeight: 500 }}>
+                                A partir de <strong>{tier.min_qty}</strong> unidades: <strong style={{ color: 'var(--color-primary)' }}>S/. {parseFloat(tier.price).toFixed(2)}</strong> c/u
+                              </span>
+                              <button type="button" onClick={() => {
+                                const updatedTiers = form.wholesale_tiers.filter((_, i) => i !== idx);
+                                setForm(f => ({
+                                  ...f,
+                                  wholesale_tiers: updatedTiers,
+                                  wholesale_price: updatedTiers[0]?.price || '',
+                                  wholesale_min_qty: updatedTiers[0]?.min_qty || ''
+                                }));
+                              }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-secondary)', padding: '4px' }}>
+                                ✕
+                              </button>
+                            </div>
+                          ))}
                         </div>
+                      )}
+
+                      <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', backgroundColor: '#FFF', padding: '12px', border: '1px solid var(--border-color)' }}>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Llevando (Min. unidades)</label>
+                          <input id="new-tier-qty" type="number" min="1" placeholder="Ej. 6" style={inputStyle} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Precio Unitario (S/.)</label>
+                          <input id="new-tier-price" type="number" step="0.01" min="0" placeholder="Ej. 45.00" style={inputStyle} />
+                        </div>
+                        <button type="button" onClick={() => {
+                          const qtyInput = document.getElementById('new-tier-qty');
+                          const priceInput = document.getElementById('new-tier-price');
+                          const qtyVal = parseInt(qtyInput?.value);
+                          const priceVal = parseFloat(priceInput?.value);
+                          if (qtyVal && priceVal) {
+                            const newTier = { min_qty: qtyVal, price: priceVal };
+                            const list = [...(form.wholesale_tiers || []), newTier];
+                            list.sort((a, b) => a.min_qty - b.min_qty);
+                            setForm(f => ({
+                              ...f,
+                              wholesale_tiers: list,
+                              wholesale_price: list[0]?.price || '',
+                              wholesale_min_qty: list[0]?.min_qty || ''
+                            }));
+                            qtyInput.value = '';
+                            priceInput.value = '';
+                          }
+                        }} className="btn-secondary" style={{ padding: '8px 16px', height: '36px', fontSize: '12px', whiteSpace: 'nowrap', fontWeight: 600 }}>
+                          + Agregar Escala
+                        </button>
                       </div>
                     </div>
+                  </div>
+                )}
 
+                {/* TAB 3: TALLAS, COLORES Y STOCK */}
+                {editorTab === 'stock' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    
                     {/* Tallas */}
                     <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px', color: 'var(--text-secondary)' }}>Tallas disponibles</label>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px', color: 'var(--text-secondary)' }}>1. Activa las Tallas</label>
                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         {TALLA_PRESETS.map(s => {
                           const active = form.sizes.includes(s);
                           return (
                             <button key={s} type="button" onClick={() => toggleSize(s)} style={{
-                              padding: '5px 14px', fontSize: '12px', fontWeight: 600,
+                              padding: '6px 14px', fontSize: '12px', fontWeight: 600,
                               border: '1px solid', cursor: 'pointer',
                               borderColor: active ? 'var(--text-primary)' : 'var(--border-color)',
                               backgroundColor: active ? 'var(--text-primary)' : '#FFF',
                               color: active ? '#FFF' : 'var(--text-secondary)',
-                              letterSpacing: '0.05em'
+                              transition: 'all 0.1s ease'
                             }}>{s}</button>
                           );
                         })}
@@ -428,16 +489,12 @@ export default function Products() {
                     </div>
 
                     {/* Colores */}
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px', color: 'var(--text-secondary)' }}>Colores del polo</label>
+                    <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px', color: 'var(--text-secondary)' }}>2. Elige los Colores</label>
                       
-                      {/* Paleta de preferidos */}
-                      {preferredColors.length === 0 ? (
-                        <p style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic', marginBottom: '8px' }}>
-                          Sin colores de preferencia creados. Agrega un color personalizado abajo para establecer preferencias.
-                        </p>
-                      ) : (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '12px' }}>
+                      {/* Preferidos */}
+                      {preferredColors.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
                           {preferredColors.map(preset => {
                             const selected = form.colors.find(c => c.hex === preset.hex);
                             return (
@@ -484,41 +541,111 @@ export default function Products() {
                         </div>
                       )}
 
-                      {/* Color personalizado */}
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '12px' }}>
+                      {/* Crear color personalizado */}
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '16px', maxWidth: '400px' }}>
                         <input type="color" value={customColor.hex} onChange={e => setCustomColor(c => ({ ...c, hex: e.target.value }))}
-                          style={{ width: '32px', height: '32px', padding: '2px', border: '1px solid var(--border-color)', cursor: 'pointer', borderRadius: '0' }} />
-                        <input placeholder="Nombre del color (ej. Verde Sage)" style={{ ...inputStyle, flex: 1 }}
+                          style={{ width: '36px', height: '36px', padding: '2px', border: '1px solid var(--border-color)', cursor: 'pointer' }} />
+                        <input placeholder="Nombre del color (ej. Verde Oliva)" style={inputStyle}
                           value={customColor.name} onChange={e => setCustomColor(c => ({ ...c, name: e.target.value }))} />
                         <button type="button" onClick={addCustomColor} style={{
-                          padding: '8px 12px', border: '1px solid var(--border-color)', background: '#FFF',
-                          cursor: 'pointer', fontSize: '12px', whiteSpace: 'nowrap', color: 'var(--text-primary)'
-                        }}>+ Agregar</button>
+                          padding: '8px 14px', border: '1px solid var(--border-color)', background: '#FFF',
+                          cursor: 'pointer', fontSize: '12px', whiteSpace: 'nowrap', color: 'var(--text-primary)', fontWeight: 600
+                        }}>+ Añadir Color</button>
                       </div>
 
-                      {/* Colores seleccionados con stock */}
+                      {/* Grilla de stock */}
                       {form.colors.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Stock por combinación de Color y Talla (el total se suma automáticamente):</p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-secondary)' }}>3. Asigna Stock por Talla</label>
                           {form.colors.map(c => {
                             const sizesStock = c.sizes_stock || {};
                             return (
-                              <div key={c.hex} style={{ border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <div key={c.hex} style={{ border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                  <div style={{ width: '20px', height: '20px', borderRadius: '50%', backgroundColor: c.hex, border: '1px solid rgba(0,0,0,0.1)', flexShrink: 0 }} />
+                                  <div style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: c.hex, border: '1px solid rgba(0,0,0,0.1)', flexShrink: 0 }} />
                                   <span style={{ fontSize: '13px', fontWeight: 600, flex: 1 }}>{c.name}</span>
-                                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Monto total color: <strong>{c.stock || 0}</strong> uds</span>
+                                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Total color: <strong>{c.stock || 0}</strong> uds</span>
                                   <button type="button" onClick={() => removeColor(c.hex)}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-secondary)', padding: '2px' }}>
-                                    ✕
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-secondary)', padding: '4px' }}>
+                                    ✕ Quitar Color
                                   </button>
                                 </div>
                                 
+                                {/* Foto de este color: subir directa o elegir de galería */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '28px', flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>📸 Foto:</span>
+                                  
+                                  {/* Botón subir foto directa para este color */}
+                                  <label style={{
+                                    padding: '4px 10px', fontSize: '11px', fontWeight: 600,
+                                    border: '1px dashed var(--border-color)', backgroundColor: 'var(--bg-primary)',
+                                    cursor: uploadingColorHex === c.hex ? 'not-allowed' : 'pointer',
+                                    whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                    opacity: uploadingColorHex === c.hex ? 0.6 : 1
+                                  }}>
+                                    {uploadingColorHex === c.hex ? '⏳ Subiendo...' : '⬆ Subir foto'}
+                                    <input 
+                                      type="file" 
+                                      accept="image/*" 
+                                      disabled={uploadingColorHex === c.hex}
+                                      style={{ display: 'none' }}
+                                      onChange={async (e) => {
+                                        const file = e.target.files?.[0]; if (!file) return;
+                                        const targetHex = c.hex;
+                                        setUploadingColorHex(targetHex);
+                                        try {
+                                          const url = await DataService.uploadImage(file);
+                                          setForm(f => {
+                                            const updatedColors = f.colors.map(col => 
+                                              col?.hex?.toLowerCase() === targetHex?.toLowerCase() 
+                                                ? { ...col, image_url: url } 
+                                                : col
+                                            );
+                                            return {
+                                              ...f,
+                                              image_url: f.image_url || url,
+                                              images: [...(f.images || []), url],
+                                              colors: updatedColors
+                                            };
+                                          });
+                                        } catch (err) { 
+                                          console.error(err);
+                                          window.alert(`Error al subir imagen:\n${err.message || 'Error desconocido'}`); 
+                                        } finally {
+                                          setUploadingColorHex(null);
+                                        }
+                                      }}
+                                    />
+                                  </label>
+
+
+
+                                  {/* Preview de la imagen asociada */}
+                                  {c.image_url ? (
+                                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                                      <img src={c.image_url} alt="" style={{ width: '36px', height: '44px', objectFit: 'cover', border: '1px solid var(--border-color)' }} />
+                                      <button type="button" onClick={() => {
+                                        setForm(f => ({
+                                          ...f,
+                                          colors: f.colors.map(col => col?.hex?.toLowerCase() === c?.hex?.toLowerCase() ? { ...col, image_url: '' } : col)
+                                        }));
+                                      }} style={{
+                                        position: 'absolute', top: '-5px', right: '-5px',
+                                        backgroundColor: '#FF4D6D', color: '#FFF', border: 'none', borderRadius: '50%',
+                                        width: '14px', height: '14px', cursor: 'pointer', display: 'flex',
+                                        alignItems: 'center', justifyContent: 'center', fontSize: '8px',
+                                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                                      }}>✕</button>
+                                    </div>
+                                  ) : (
+                                    <span style={{ fontSize: '10px', color: '#B0B0B0', fontStyle: 'italic' }}>Sin foto</span>
+                                  )}
+                                </div>
                                 {form.sizes.length > 0 ? (
-                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(70px, 1fr))', gap: '8px', paddingLeft: '30px' }}>
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(76px, 1fr))', gap: '8px', paddingLeft: '28px' }}>
                                     {form.sizes.map(size => (
                                       <div key={size} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                        <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Talla {size}</label>
+                                        <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)' }}>{size}</label>
                                         <input type="number" min="0" 
                                           value={sizesStock[size] !== undefined ? sizesStock[size] : 0}
                                           onChange={e => updateColorSizeStock(c.hex, size, e.target.value)}
@@ -527,99 +654,40 @@ export default function Products() {
                                     ))}
                                   </div>
                                 ) : (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingLeft: '30px' }}>
-                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Stock:</span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingLeft: '28px' }}>
+                                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Stock total de este color:</span>
                                     <input type="number" min="0" value={c.stock || 0}
                                       onChange={e => updateColorStock(c.hex, e.target.value)}
-                                      style={{ ...inputStyle, width: '70px', padding: '4px 8px', textAlign: 'center' }} />
-                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>uds</span>
+                                      style={{ ...inputStyle, width: '80px', padding: '4px 8px', textAlign: 'center' }} />
                                   </div>
                                 )}
                               </div>
                             );
                           })}
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', paddingTop: '4px' }}>
-                            Total stock: {form.colors.reduce((s, c) => s + c.stock, 0)} uds
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', paddingTop: '8px', borderTop: '1px solid var(--border-color)' }}>
+                            Stock total sumado: {form.colors.reduce((s, c) => s + c.stock, 0)} unidades
                           </div>
                         </div>
                       )}
 
-                      {/* Stock manual si no hay colores */}
+                      {/* Stock manual */}
                       {form.colors.length === 0 && (
-                        <div style={{ marginTop: '4px' }}>
-                          <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Stock total (sin colores definidos)</label>
-                          <input type="number" style={{ ...inputStyle, maxWidth: '100px' }}
+                        <div style={{ marginTop: '10px', backgroundColor: 'var(--bg-primary)', padding: '12px', border: '1px solid var(--border-color)' }}>
+                          <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Stock total (al no tener colores especificados)</label>
+                          <input type="number" style={{ ...inputStyle, maxWidth: '120px' }}
                             value={form.stock} onChange={e => setForm(f => ({ ...f, stock: e.target.value }))} />
                         </div>
                       )}
                     </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input type="checkbox" id="active-check" checked={form.active} onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} />
-                      <label htmlFor="active-check" style={{ fontSize: '13px', cursor: 'pointer' }}>Activo en tienda</label>
-                    </div>
                   </div>
+                )}
 
-                  {/* Columna derecha — Imágenes */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px', color: 'var(--text-secondary)' }}>Imágenes</label>
-                      <div style={{ border: '1px dashed var(--border-color)', padding: '20px', textAlign: 'center', backgroundColor: 'var(--bg-primary)', position: 'relative', cursor: 'pointer' }}>
-                        <input type="file" accept="image/*" onChange={handleImageUpload}
-                          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0, cursor: 'pointer' }} />
-                        <Upload size={18} style={{ color: 'var(--text-secondary)', marginBottom: '6px' }} />
-                        <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                          {uploading ? 'Subiendo...' : 'Subir imagen'}
-                        </span>
-                      </div>
-                    </div>
 
-                    <div>
-                      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '5px' }}>O URL directa</label>
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        <input placeholder="https://..." value={newImageUrl} onChange={e => setNewImageUrl(e.target.value)} style={inputStyle} />
-                        <button type="button" onClick={() => {
-                          if (!newImageUrl) return;
-                          setForm(f => ({ ...f, image_url: f.image_url || newImageUrl, images: [...f.images, newImageUrl] }));
-                          setNewImageUrl('');
-                        }} style={{ padding: '8px 12px', border: '1px solid var(--border-color)', background: '#FFF', cursor: 'pointer', fontSize: '12px', color: 'var(--text-primary)' }}>
-                          Añadir
-                        </button>
-                      </div>
-                    </div>
 
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                      {form.images.map((img, idx) => {
-                        const isPrimary = form.image_url === img;
-                        return (
-                          <div key={idx} style={{
-                            position: 'relative', width: '76px', height: '96px',
-                            border: isPrimary ? '2px solid var(--text-primary)' : '1px solid var(--border-color)'
-                          }}>
-                            <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                            <button type="button" onClick={() => {
-                              const updated = form.images.filter((_, i) => i !== idx);
-                              const primary = img === form.image_url ? (updated[0] || '') : form.image_url;
-                              setForm(f => ({ ...f, image_url: primary, images: updated }));
-                            }} style={{ position: 'absolute', top: '-6px', right: '-6px', backgroundColor: 'var(--color-secondary)', color: '#FFF', border: 'none', borderRadius: '50%', width: '18px', height: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <X size={10} />
-                            </button>
-                            {!isPrimary && (
-                              <button type="button" onClick={() => setForm(f => ({ ...f, image_url: img }))}
-                                style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.65)', color: '#FFF', border: 'none', fontSize: '9px', padding: '3px', cursor: 'pointer', textAlign: 'center' }}>
-                                Principal
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '20px', marginTop: '24px' }}>
-                  <button type="button" onClick={() => setIsEditing(false)} className="btn-secondary" style={{ borderRadius: '0', fontSize: '13px' }}>Cancelar</button>
-                  <button type="submit" className="btn-primary" style={{ borderRadius: '0', fontSize: '13px' }}>Guardar polo</button>
+                {/* Footer Buttons */}
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '20px', marginTop: '12px' }}>
+                  <button type="button" onClick={() => setIsEditing(false)} className="btn-secondary" style={{ borderRadius: '0', fontSize: '13px', padding: '10px 20px' }}>Cancelar</button>
+                  <button type="submit" className="btn-primary" style={{ borderRadius: '0', fontSize: '13px', padding: '10px 20px', fontWeight: 600 }}>Guardar polo</button>
                 </div>
               </form>
             </div>

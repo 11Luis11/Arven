@@ -258,10 +258,15 @@ export const DataService = {
           created_at: updatedProduct.created_at,
           updated_at: new Date().toISOString()
         };
-        const { data, error } = await supabase.from('products').upsert(payload).select().single();
-        if (!error && data) { invalidateCache('products'); return data; }
+        const { error } = await supabase.from('products').upsert(payload);
+        if (error) {
+          throw new Error(error.message || 'Error desconocido al guardar en Supabase.');
+        }
+        invalidateCache('products');
+        return payload;
       } catch (e) {
         console.error('Error al guardar producto en Supabase:', e);
+        throw e;
       }
     }
     invalidateCache('products');
@@ -653,26 +658,24 @@ export const DataService = {
   // --- IMÁGENES (Supabase Storage) ---
   async uploadImage(file) {
     if (supabase && file instanceof File) {
-      try {
-        const ext = file.name.split('.').pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`;
-        const { data, error } = await supabase.storage
-          .from('store-media')
-          .upload(fileName, file, { cacheControl: '3600', upsert: false });
-        if (!error && data) {
-          const { data: urlData } = supabase.storage.from('store-media').getPublicUrl(fileName);
-          return urlData.publicUrl;
+      const ext = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`;
+      const { data, error } = await supabase.storage
+        .from('store-media')
+        .upload(fileName, file, { cacheControl: '3600', upsert: false });
+      
+      if (error) {
+        if (error.message && error.message.toLowerCase().includes('bucket not found')) {
+          throw new Error('El bucket "store-media" no existe en tu Supabase. Por favor, ve a la sección "Storage" de tu panel de Supabase, crea un nuevo bucket llamado "store-media" y márcalo como público (Public Bucket).');
         }
-      } catch (e) {
-        console.error('Error al subir imagen a Supabase Storage:', e);
+        throw new Error(`Error de Supabase Storage: ${error.message || 'No se pudo subir la foto.'}`);
+      }
+      
+      if (data) {
+        const { data: urlData } = supabase.storage.from('store-media').getPublicUrl(fileName);
+        return urlData.publicUrl;
       }
     }
-    // Fallback: base64
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+    throw new Error('Supabase no está inicializado o el archivo es inválido.');
   }
 };

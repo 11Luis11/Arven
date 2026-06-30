@@ -8,7 +8,6 @@ import { applyFavicon } from './utils/favicon';
 import Storefront from './pages/Storefront';
 import Catalog from './pages/Catalog';
 import ProductDetail from './pages/ProductDetail';
-import CartDrawer from './components/CartDrawer';
 
 // Admin Pages (cargados bajo demanda con lazy — solo cuando el admin navega ahí)
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'));
@@ -45,7 +44,8 @@ function ProtectedRoute({ children }) {
 // Layout Público (Navbar y Footer Compartido)
 function StorefrontLayout({ onOpenCart }) {
   const [config, setConfig] = useState(null);
-  const [cartCount, setCartCount] = useState(0);
+  const [categories, setCategories] = useState([]);
+  const [products, setProducts] = useState([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [navSearch, setNavSearch] = useState('');
   
@@ -61,21 +61,15 @@ function StorefrontLayout({ onOpenCart }) {
   };
 
   const loadNavData = async () => {
-    const cfg = await DataService.getConfig();
+    const [cfg, cats, prods] = await Promise.all([
+      DataService.getConfig(),
+      DataService.getCategories(),
+      DataService.getProducts()
+    ]);
     setConfig(cfg);
+    setCategories(cats.filter(c => c.active));
+    setProducts(prods.filter(p => p.active));
     if (cfg.storeFaviconUrl) applyFavicon(cfg.storeFaviconUrl); // asegura que el favicon personalizado se vea en cualquier página/pestaña
-
-    try {
-      const cart = localStorage.getItem('carrillo_cart');
-      if (cart) {
-        const items = JSON.parse(cart);
-        setCartCount(items.reduce((sum, item) => sum + item.quantity, 0));
-      } else {
-        setCartCount(0);
-      }
-    } catch (e) {
-      setCartCount(0);
-    }
   };
 
   useEffect(() => {
@@ -86,14 +80,8 @@ function StorefrontLayout({ onOpenCart }) {
       loadNavData();
     });
 
-    const handleCartUpdate = () => {
-      loadNavData();
-    };
-    window.addEventListener('cart_updated', handleCartUpdate);
-
     return () => {
       unsubscribe();
-      window.removeEventListener('cart_updated', handleCartUpdate);
     };
   }, []);
 
@@ -103,6 +91,14 @@ function StorefrontLayout({ onOpenCart }) {
   }, [location]);
 
   if (!config) return null;
+
+  // Filtrar recomendaciones de búsqueda dinámicas
+  const searchSuggestions = navSearch.trim()
+    ? products.filter(p => 
+        p.name.toLowerCase().includes(navSearch.toLowerCase()) || 
+        p.sku.toLowerCase().includes(navSearch.toLowerCase())
+      ).slice(0, 5)
+    : [];
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-primary)' }}>
@@ -159,6 +155,7 @@ function StorefrontLayout({ onOpenCart }) {
               placeholder="¿Qué polo estás buscando hoy?" 
               value={navSearch}
               onChange={e => setNavSearch(e.target.value)}
+              onBlur={() => setTimeout(() => setNavSearch(''), 200)}
               style={{
                 width: '100%',
                 padding: '8px 12px 8px 36px',
@@ -171,7 +168,6 @@ function StorefrontLayout({ onOpenCart }) {
                 transition: 'border-color 0.2s ease'
               }}
               onFocus={e => e.target.style.borderColor = 'var(--text-primary)'}
-              onBlur={e => e.target.style.borderColor = 'var(--border-color)'}
             />
             <Search size={14} style={{
               position: 'absolute',
@@ -180,59 +176,71 @@ function StorefrontLayout({ onOpenCart }) {
               transform: 'translateY(-50%)',
               color: 'var(--text-secondary)'
             }} />
+            {/* Sugerencias de búsqueda en tiempo real */}
+            {searchSuggestions.length > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                backgroundColor: '#FFF',
+                border: '1px solid var(--border-color)',
+                borderTop: 'none',
+                boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
+                zIndex: 1000,
+                display: 'flex',
+                flexDirection: 'column'
+              }}>
+                {searchSuggestions.map(p => (
+                  <Link
+                    key={p.id}
+                    to={`/product/${p.id}`}
+                    onClick={() => setNavSearch('')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      padding: '10px 14px',
+                      borderBottom: '1px solid #F1F1F1',
+                      textDecoration: 'none',
+                      color: 'inherit',
+                      transition: 'background 0.15s ease'
+                    }}
+                    onMouseOver={e => e.currentTarget.style.backgroundColor = '#F8F9FA'}
+                    onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <img src={p.image_url} alt="" style={{ width: '36px', height: '44px', objectFit: 'cover', border: '1px solid #F0F0F0' }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: '13px', fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>S/. {(p.offer_price || p.price).toFixed(2)}</span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </form>
 
-          {/* Menú Desktop */}
-          <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }} className="desktop-menu">
-            <Link to="/catalog" style={{ fontSize: '13px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Catálogo
+          {/* Menú Desktop — Categorías Dinámicas */}
+          <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }} className="desktop-menu">
+            <Link to="/catalog" style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+              Ver Todo
             </Link>
-            <Link to="/catalog?category=polos-oversize" style={{ fontSize: '13px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Oversize
-            </Link>
-            <Link to="/catalog?category=polos-basicos" style={{ fontSize: '13px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Básicos
-            </Link>
-
+            {categories.map(cat => (
+              <Link
+                key={cat.id}
+                to={`/catalog?category=${cat.slug}`}
+                style={{ fontSize: '12px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', whiteSpace: 'nowrap', transition: 'color 0.15s ease' }}
+                onMouseOver={e => e.currentTarget.style.color = 'var(--text-primary)'}
+                onMouseOut={e => e.currentTarget.style.color = 'var(--text-secondary)'}
+              >
+                {cat.name}
+              </Link>
+            ))}
           </div>
 
           {/* Iconos de Acción */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button 
-              onClick={onOpenCart}
-              className="accessible-touch"
-              aria-label="Abrir carrito de compras"
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                position: 'relative',
-                display: 'flex',
-                alignItems: 'center',
-                color: 'var(--text-primary)'
-              }}
-            >
-              <ShoppingBag size={20} strokeWidth={1.5} />
-              {cartCount > 0 && (
-                <span style={{
-                  position: 'absolute',
-                  top: '-4px',
-                  right: '-4px',
-                  backgroundColor: 'var(--color-primary)',
-                  color: '#FFFFFF',
-                  fontSize: '9px',
-                  fontWeight: 700,
-                  width: '16px',
-                  height: '16px',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  {cartCount}
-                </span>
-              )}
-            </button>
+            {/* Hamburguesa Móvil */}
 
             {/* Hamburguesa Móvil */}
             <button
@@ -268,9 +276,12 @@ function StorefrontLayout({ onOpenCart }) {
           gap: '16px',
           boxShadow: '0 10px 15px rgba(0,0,0,0.05)'
         }}>
-          <Link to="/catalog">Catálogo Completo</Link>
-          <Link to="/catalog?category=polos-oversize">Polos Oversize</Link>
-          <Link to="/catalog?category=polos-basicos">Polos Básicos</Link>
+          <Link to="/catalog" style={{ fontWeight: 600, fontSize: '14px' }}>Ver Todo</Link>
+          {categories.map(cat => (
+            <Link key={cat.id} to={`/catalog?category=${cat.slug}`} style={{ fontWeight: 500, fontSize: '14px', color: 'var(--text-secondary)' }}>
+              {cat.name}
+            </Link>
+          ))}
 
         </div>
       )}
@@ -293,6 +304,9 @@ function StorefrontLayout({ onOpenCart }) {
           }
           .mobile-menu-btn {
             display: inline-flex !important;
+          }
+          .nav-search-bar {
+            display: none !important;
           }
         }
       `}</style>
@@ -359,12 +373,9 @@ export default function App() {
         />
 
         {/* Rutas Públicas (Storefront) */}
-        <Route path="/*" element={<StorefrontLayout onOpenCart={() => setIsCartOpen(true)} />} />
+        <Route path="/*" element={<StorefrontLayout onOpenCart={() => {}} />} />
 
       </Routes>
-
-      {/* Lateral Cart Drawer */}
-      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
     </BrowserRouter>
   );
 }
