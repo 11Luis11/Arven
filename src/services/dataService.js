@@ -52,20 +52,51 @@ const DEFAULT_CONFIG = {
 };
 
 // ==========================================
-// REALTIME (solo Supabase channels)
+// CACHE EN MEMORIA para reducir llamadas a Supabase
+// ==========================================
+const _cache = {};
+const CACHE_TTL = 30_000; // 30 segundos
+
+function getCached(key) {
+  const entry = _cache[key];
+  if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.data;
+  return null;
+}
+function setCache(key, data) {
+  _cache[key] = { data, ts: Date.now() };
+}
+function invalidateCache(prefix) {
+  if (prefix) {
+    Object.keys(_cache).forEach(k => { if (k.startsWith(prefix)) delete _cache[k]; });
+  } else {
+    Object.keys(_cache).forEach(k => delete _cache[k]);
+  }
+}
+
+// ==========================================
+// REALTIME (solo Supabase channels) — con debounce
 // ==========================================
 export function subscribeToRealtime(callback) {
   if (!supabase) return () => {};
+
+  let debounceTimer = null;
+  const debouncedCb = (payload) => {
+    // Invalidar caché al recibir cambios
+    invalidateCache();
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => callback(payload), 300);
+  };
 
   const channelName = 'realtime-' + Math.random().toString(36).substr(2, 9);
   const channel = supabase
     .channel(channelName)
     .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-      callback({ key: payload.table });
+      debouncedCb({ key: payload.table });
     })
     .subscribe();
 
   return () => {
+    clearTimeout(debounceTimer);
     supabase.removeChannel(channel);
   };
 }
@@ -103,10 +134,16 @@ export const DataService = {
 
   // --- CONFIGURACIÓN DE TIENDA ---
   async getConfig() {
+    const cached = getCached('config');
+    if (cached) return cached;
     if (supabase) {
       try {
         const { data, error } = await supabase.from('config').select('value').eq('key', 'config').single();
-        if (!error && data) return { ...DEFAULT_CONFIG, ...data.value };
+        if (!error && data) {
+          const result = { ...DEFAULT_CONFIG, ...data.value };
+          setCache('config', result);
+          return result;
+        }
       } catch (e) {
         console.error('Error al obtener config de Supabase:', e);
       }
@@ -123,15 +160,18 @@ export const DataService = {
         console.error('Error al guardar config en Supabase:', e);
       }
     }
+    invalidateCache('config');
     return updated;
   },
 
   // --- CATEGORÍAS ---
   async getCategories() {
+    const cached = getCached('categories');
+    if (cached) return cached;
     if (supabase) {
       try {
         const { data, error } = await supabase.from('categories').select('*');
-        if (!error && data) return data;
+        if (!error && data) { setCache('categories', data); return data; }
       } catch (e) {
         console.error('Error al obtener categorías de Supabase:', e);
       }
@@ -150,11 +190,12 @@ export const DataService = {
     if (supabase) {
       try {
         const { data, error } = await supabase.from('categories').upsert(updatedCategory).select().single();
-        if (!error && data) return data;
+        if (!error && data) { invalidateCache('categories'); return data; }
       } catch (e) {
         console.error('Error al guardar categoría en Supabase:', e);
       }
     }
+    invalidateCache('categories');
     return updatedCategory;
   },
 
@@ -166,15 +207,18 @@ export const DataService = {
         console.error('Error al eliminar categoría de Supabase:', e);
       }
     }
+    invalidateCache('categories');
     return true;
   },
 
   // --- PRODUCTOS ---
   async getProducts() {
+    const cached = getCached('products');
+    if (cached) return cached;
     if (supabase) {
       try {
         const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: false });
-        if (!error && data) return data;
+        if (!error && data) { setCache('products', data); return data; }
       } catch (e) {
         console.error('Error al obtener productos de Supabase:', e);
       }
@@ -204,6 +248,7 @@ export const DataService = {
           offer_price: updatedProduct.offer_price !== null ? parseFloat(updatedProduct.offer_price) : null,
           wholesale_price: updatedProduct.wholesale_price !== null ? parseFloat(updatedProduct.wholesale_price) : null,
           wholesale_min_qty: parseInt(updatedProduct.wholesale_min_qty) || 6,
+          wholesale_tiers: updatedProduct.wholesale_tiers || [],
           stock: parseInt(updatedProduct.stock) || 0,
           image_url: updatedProduct.image_url,
           images: updatedProduct.images,
@@ -214,11 +259,12 @@ export const DataService = {
           updated_at: new Date().toISOString()
         };
         const { data, error } = await supabase.from('products').upsert(payload).select().single();
-        if (!error && data) return data;
+        if (!error && data) { invalidateCache('products'); return data; }
       } catch (e) {
         console.error('Error al guardar producto en Supabase:', e);
       }
     }
+    invalidateCache('products');
     return updatedProduct;
   },
 
@@ -230,6 +276,7 @@ export const DataService = {
         console.error('Error al eliminar producto de Supabase:', e);
       }
     }
+    invalidateCache('products');
     return true;
   },
 
@@ -448,7 +495,8 @@ export const DataService = {
       quantity: item.quantity,
       unit_price: item.unit_price,
       total_price: item.quantity * item.unit_price,
-      color_hex: item.color_hex || null
+      color_hex: item.color_hex || null,
+      selected_size: item.selected_size || null
     }));
 
     if (supabase) {
@@ -460,9 +508,19 @@ export const DataService = {
           if (prod) {
             const updates = { stock: Math.max(0, prod.stock - item.quantity) };
             if (item.color_hex && Array.isArray(prod.colors)) {
-              updates.colors = prod.colors.map(c =>
-                c.hex === item.color_hex ? { ...c, stock: Math.max(0, (c.stock || 0) - item.quantity) } : c
-              );
+              updates.colors = prod.colors.map(c => {
+                if (c.hex === item.color_hex) {
+                  const currentStock = c.stock || 0;
+                  const newColorStock = Math.max(0, currentStock - item.quantity);
+                  if (item.selected_size && c.sizes_stock) {
+                    const newSizesStock = { ...c.sizes_stock };
+                    newSizesStock[item.selected_size] = Math.max(0, (newSizesStock[item.selected_size] || 0) - item.quantity);
+                    return { ...c, stock: newColorStock, sizes_stock: newSizesStock };
+                  }
+                  return { ...c, stock: newColorStock };
+                }
+                return c;
+              });
             }
             await supabase.from('products').update(updates).eq('id', item.product_id);
           }
@@ -501,9 +559,19 @@ export const DataService = {
           if (prod) {
             const updates = { stock: prod.stock + item.quantity };
             if (item.color_hex && Array.isArray(prod.colors)) {
-              updates.colors = prod.colors.map(c =>
-                c.hex === item.color_hex ? { ...c, stock: (c.stock || 0) + item.quantity } : c
-              );
+              updates.colors = prod.colors.map(c => {
+                if (c.hex === item.color_hex) {
+                  const currentStock = c.stock || 0;
+                  const newColorStock = currentStock + item.quantity;
+                  if (item.selected_size && c.sizes_stock) {
+                    const newSizesStock = { ...c.sizes_stock };
+                    newSizesStock[item.selected_size] = (newSizesStock[item.selected_size] || 0) + item.quantity;
+                    return { ...c, stock: newColorStock, sizes_stock: newSizesStock };
+                  }
+                  return { ...c, stock: newColorStock };
+                }
+                return c;
+              });
             }
             await supabase.from('products').update(updates).eq('id', item.product_id);
           }

@@ -10,6 +10,7 @@ export default function ProductDetail({ onOpenCart }) {
   const [recommended, setRecommended] = useState([]);
   const [activeImage, setActiveImage] = useState('');
   const [selectedSize, setSelectedSize] = useState('M');
+  const [selectedColor, setSelectedColor] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Zoom reference variables
@@ -24,9 +25,20 @@ export default function ProductDetail({ onOpenCart }) {
       
       if (found) {
         setProduct(found);
-        // Usar primer elemento del array de imágenes, o fallback a image_url
         const imgList = found.images && found.images.length > 0 ? found.images : [found.image_url];
         setActiveImage(imgList[0]);
+
+        if (found.colors && found.colors.length > 0) {
+          setSelectedColor(found.colors[0]);
+        } else {
+          setSelectedColor(null);
+        }
+
+        if (found.sizes && found.sizes.length > 0) {
+          setSelectedSize(found.sizes[0]);
+        } else {
+          setSelectedSize('M');
+        }
 
         // Filtrar recomendados de la misma categoría, excluyendo el actual
         const similar = prods
@@ -39,16 +51,36 @@ export default function ProductDetail({ onOpenCart }) {
     fetchProduct();
   }, [id]);
 
+  const getSelectedCombinationStock = () => {
+    if (!product) return 0;
+    if (selectedColor) {
+      if (selectedColor.sizes_stock && selectedColor.sizes_stock[selectedSize] !== undefined) {
+        return selectedColor.sizes_stock[selectedSize];
+      }
+      return selectedColor.stock || 0;
+    }
+    return product.stock || 0;
+  };
+
   const addToCart = (prod = product) => {
     if (!prod) return;
     try {
       const cartRaw = localStorage.getItem('carrillo_cart');
       const cart = cartRaw ? JSON.parse(cartRaw) : [];
-      const index = cart.findIndex(item => item.id === prod.id);
+      
+      const targetSize = prod.id === product.id ? selectedSize : (prod.sizes?.[0] || 'M');
+      const targetColor = prod.id === product.id ? selectedColor : (prod.colors?.[0] || null);
+
+      const cartItemUniqueId = `${prod.id}-${targetSize}-${targetColor ? targetColor.hex : 'no-color'}`;
+      
+      const index = cart.findIndex(item => item.cartItemId === cartItemUniqueId);
       
       const cartItem = { 
-        ...prod, 
-        name: `${prod.name} (${selectedSize})`
+        ...prod,
+        cartItemId: cartItemUniqueId,
+        selectedSize: targetSize,
+        selectedColor: targetColor,
+        name: `${prod.name} ${targetColor ? targetColor.name.toUpperCase() : ''} (${targetSize})`
       };
 
       if (index !== -1) {
@@ -215,18 +247,81 @@ export default function ProductDetail({ onOpenCart }) {
             )}
           </div>
           
-          {product.wholesale_price && (
-            <div style={{
-              backgroundColor: '#EEF2FF',
-              border: '1px solid #E0E7FF',
-              padding: '10px 14px',
-              fontSize: '13px',
-              color: 'var(--color-primary)',
-              marginTop: '4px'
-            }}>
-              <strong>¡Precio Mayorista disponible!</strong> Compra <strong>{product.wholesale_min_qty || 6}</strong> o más polos a solo <strong>S/. {product.wholesale_price.toFixed(2)} c/u</strong>.
-            </div>
-          )}
+          {(() => {
+            const tiers = product.wholesale_tiers && product.wholesale_tiers.length > 0
+              ? [...product.wholesale_tiers].sort((a, b) => a.min_qty - b.min_qty)
+              : product.wholesale_price
+                ? [{ min_qty: product.wholesale_min_qty || 6, price: product.wholesale_price }]
+                : [];
+            if (tiers.length === 0) return null;
+
+            return (
+              <div style={{ marginTop: '4px' }}>
+                <div style={{
+                  display: 'flex',
+                  gap: '0px',
+                  flexWrap: 'wrap',
+                  border: '1px solid #E0E7FF',
+                  borderRadius: '4px',
+                  overflow: 'hidden'
+                }}>
+                  {tiers.map((tier, idx) => {
+                    const nextTier = tiers[idx + 1];
+                    const rangeLabel = nextTier
+                      ? `${tier.min_qty}-${nextTier.min_qty - 1} Piezas`
+                      : `${tier.min_qty}+ Piezas`;
+
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          flex: '1 1 0',
+                          minWidth: '100px',
+                          padding: '14px 12px',
+                          textAlign: 'center',
+                          backgroundColor: idx === 0 ? '#EEF2FF' : idx === 1 ? '#E8EDFF' : '#E0E5FF',
+                          borderRight: idx < tiers.length - 1 ? '1px solid #D0D5FF' : 'none',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px'
+                        }}
+                      >
+                        <span style={{
+                          fontSize: '18px',
+                          fontWeight: 700,
+                          color: '#1E1B4B',
+                          letterSpacing: '-0.02em'
+                        }}>
+                          S/. {parseFloat(tier.price).toFixed(2)}
+                        </span>
+                        <span style={{
+                          fontSize: '11px',
+                          color: '#6366F1',
+                          fontWeight: 500,
+                          letterSpacing: '0.02em'
+                        }}>
+                          {rangeLabel}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  marginTop: '8px',
+                  fontSize: '11px',
+                  color: '#6366F1',
+                  fontWeight: 600,
+                  letterSpacing: '0.04em'
+                }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', backgroundColor: '#6366F1', color: '#FFF', borderRadius: '50%', fontSize: '10px', fontWeight: 700 }}>%</span>
+                  PRECIOS AL POR MAYOR DISPONIBLES
+                </div>
+              </div>
+            );
+          })()}
 
           <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)' }} />
 
@@ -237,52 +332,112 @@ export default function ProductDetail({ onOpenCart }) {
             </p>
           </div>
 
-          {/* Tallas */}
-          <div>
-            <h3 style={{ fontSize: '14px', fontWeight: 500, marginBottom: '12px' }}>Seleccionar Talla</h3>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              {['S', 'M', 'L', 'XL'].map((size) => (
-                <button
-                  key={size}
-                  onClick={() => setSelectedSize(size)}
-                  style={{
-                    width: '44px',
-                    height: '44px',
-                    border: '1px solid var(--border-color)',
-                    background: selectedSize === size ? 'var(--text-primary)' : '#FFF',
-                    color: selectedSize === size ? '#FFF' : 'var(--text-primary)',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    fontWeight: 500,
-                    transition: 'var(--transition-fast)'
-                  }}
-                >
-                  {size}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {product.stock <= 5 && product.stock > 0 && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              backgroundColor: '#FFFBEB',
-              border: '1px solid #FEF3C7',
-              padding: '12px 16px',
-              fontSize: '13px',
-              color: '#B45309'
-            }}>
-              <AlertTriangle size={16} />
-              <span>Solo quedan {product.stock} unidades en almacén.</span>
+          {/* Colores */}
+          {product.colors && product.colors.length > 0 && (
+            <div>
+              <h3 style={{ fontSize: '14px', fontWeight: 500, marginBottom: '12px' }}>Seleccionar Color: <span style={{ fontWeight: 'normal', color: 'var(--text-secondary)' }}>{selectedColor ? selectedColor.name : ''}</span></h3>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                {product.colors.map((c) => {
+                  const isSelected = selectedColor?.hex === c.hex;
+                  return (
+                    <button
+                      key={c.hex}
+                      onClick={() => setSelectedColor(c)}
+                      title={c.name}
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        backgroundColor: c.hex,
+                        border: isSelected ? '2px solid var(--text-primary)' : '1px solid var(--border-color)',
+                        boxShadow: isSelected ? '0 0 0 2px #FFF, 0 0 0 4px var(--text-primary)' : 'none',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                    />
+                  );
+                })}
+              </div>
             </div>
           )}
+
+          {/* Tallas */}
+          {product.sizes && product.sizes.length > 0 && (
+            <div>
+              <h3 style={{ fontSize: '14px', fontWeight: 500, marginBottom: '12px' }}>Seleccionar Talla</h3>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {product.sizes.map((size) => (
+                  <button
+                    key={size}
+                    onClick={() => setSelectedSize(size)}
+                    style={{
+                      width: '44px',
+                      height: '44px',
+                      border: '1px solid var(--border-color)',
+                      background: selectedSize === size ? 'var(--text-primary)' : '#FFF',
+                      color: selectedSize === size ? '#FFF' : 'var(--text-primary)',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      transition: 'var(--transition-fast)'
+                    }}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(() => {
+            const combStock = getSelectedCombinationStock();
+            if (combStock <= 5 && combStock > 0) {
+              return (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  backgroundColor: '#FFFBEB',
+                  border: '1px solid #FEF3C7',
+                  padding: '12px 16px',
+                  fontSize: '13px',
+                  color: '#B45309',
+                  marginTop: '8px'
+                }}>
+                  <AlertTriangle size={16} />
+                  <span>¡Solo quedan {combStock} unidades de esta combinación color/talla!</span>
+                </div>
+              );
+            } else if (combStock === 0) {
+              return (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  backgroundColor: '#FFF5F5',
+                  border: '1px solid #FED7D7',
+                  padding: '12px 16px',
+                  fontSize: '13px',
+                  color: '#C53030',
+                  marginTop: '8px'
+                }}>
+                  <AlertTriangle size={16} />
+                  <span>Esta combinación color/talla no tiene stock disponible en este momento.</span>
+                </div>
+              );
+            } else {
+              return (
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  Stock disponible: <strong>{combStock}</strong> unidades.
+                </div>
+              );
+            }
+          })()}
 
           <div style={{ marginTop: '12px' }}>
             <button
               onClick={() => addToCart()}
-              disabled={product.stock === 0}
+              disabled={getSelectedCombinationStock() === 0}
               className="btn-primary"
               style={{
                 width: '100%',
@@ -296,7 +451,7 @@ export default function ProductDetail({ onOpenCart }) {
               }}
             >
               <ShoppingBag size={18} />
-              {product.stock === 0 ? 'AGOTADO' : 'AÑADIR AL CARRITO'}
+              {getSelectedCombinationStock() === 0 ? 'AGOTADO' : 'AÑADIR AL CARRITO'}
             </button>
           </div>
 

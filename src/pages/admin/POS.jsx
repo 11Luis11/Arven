@@ -186,11 +186,14 @@ export default function POS() {
       ? freshProduct.colors?.find(c => c.hex === selectedColor.hex) || selectedColor
       : null;
 
-    // Validar stock del color específico si aplica
+    // Validar stock del color específico y talla si aplica
     if (freshColor) {
-      const colorStock = freshColor.stock;
-      if (selectedQty > colorStock) {
-        setErrorMsg(`Stock insuficiente para el color ${freshColor.name} (Disponible: ${colorStock} uds).`);
+      let availableStock = freshColor.stock;
+      if (freshColor.sizes_stock && freshColor.sizes_stock[selectedSize] !== undefined) {
+        availableStock = freshColor.sizes_stock[selectedSize];
+      }
+      if (selectedQty > availableStock) {
+        setErrorMsg(`Stock insuficiente para el color ${freshColor.name} talla ${selectedSize} (Disponible: ${availableStock} uds).`);
         setTimeout(() => setErrorMsg(''), 3000);
         return;
       }
@@ -214,7 +217,9 @@ export default function POS() {
       const newQty = updated[existingIndex].quantity + selectedQty;
       
       // Validar límite superior con stock fresco
-      const limit = freshColor ? freshColor.stock : freshProduct.stock;
+      const limit = freshColor
+        ? (freshColor.sizes_stock && freshColor.sizes_stock[selectedSize] !== undefined ? freshColor.sizes_stock[selectedSize] : freshColor.stock)
+        : freshProduct.stock;
       if (newQty > limit) {
         setErrorMsg(`No puedes agregar más. Supera el stock de ${limit} uds.`);
         setTimeout(() => setErrorMsg(''), 3000);
@@ -252,7 +257,9 @@ export default function POS() {
       return;
     }
 
-    const limit = item.selectedColor ? item.selectedColor.stock : item.stock;
+    const limit = item.selectedColor
+      ? (item.selectedColor.sizes_stock && item.selectedColor.sizes_stock[item.selectedSize] !== undefined ? item.selectedColor.sizes_stock[item.selectedSize] : item.selectedColor.stock)
+      : item.stock;
     if (newQty > limit) {
       setErrorMsg(`Supera el stock de inventario para este color/talla (${limit} uds).`);
       setTimeout(() => setErrorMsg(''), 2000);
@@ -289,13 +296,27 @@ export default function POS() {
   // El descuento mayorista aplica si la suma total de variantes del MISMO producto base
   // (distintos colores/tallas) alcanza el minimo mayorista.
   const getItemUnitPrice = (item, allItems = orderItems) => {
-    if (!item.wholesale_price) return item.offer_price || item.price;
+    const basePrice = item.offer_price || item.price;
     const totalQtyForProduct = allItems
       .filter(i => i.id === item.id)
       .reduce((sum, i) => sum + i.quantity, 0);
-    const minQty = item.wholesale_min_qty || 6;
-    const isWholesale = totalQtyForProduct >= minQty;
-    return isWholesale ? item.wholesale_price : (item.offer_price || item.price);
+
+    let applicableWholesalePrice = null;
+
+    if (Array.isArray(item.wholesale_tiers) && item.wholesale_tiers.length > 0) {
+      const sortedTiers = [...item.wholesale_tiers].sort((a, b) => b.min_qty - a.min_qty);
+      const matchedTier = sortedTiers.find(t => totalQtyForProduct >= t.min_qty);
+      if (matchedTier) {
+        applicableWholesalePrice = matchedTier.price;
+      }
+    } else if (item.wholesale_price) {
+      const minQty = item.wholesale_min_qty || 6;
+      if (totalQtyForProduct >= minQty) {
+        applicableWholesalePrice = item.wholesale_price;
+      }
+    }
+
+    return applicableWholesalePrice !== null ? applicableWholesalePrice : basePrice;
   };
 
   // Totales (includes item-level discounts)
@@ -394,6 +415,7 @@ export default function POS() {
             discount_pct: discountPct,
             color_hex: item.selectedColor ? item.selectedColor.hex : null,
             color_name: item.selectedColor ? item.selectedColor.name : null,
+            selected_size: item.selectedSize || null,
           };
         })
       };
@@ -1067,23 +1089,31 @@ export default function POS() {
                     <div style={{ display: 'flex', gap: '8px' }}>
                       {freshProd.sizes.map(size => {
                         const isSelected = selectedSize === size;
+                        const sizeStock = selectedColor && selectedColor.sizes_stock
+                          ? (selectedColor.sizes_stock[size] !== undefined ? selectedColor.sizes_stock[size] : 0)
+                          : 0;
                         return (
                           <button
                             key={size}
                             type="button"
                             onClick={() => setSelectedSize(size)}
                             style={{
-                              width: '36px',
-                              height: '36px',
+                              padding: '8px 12px',
                               border: isSelected ? '2px solid var(--text-primary)' : '1px solid var(--border-color)',
                               backgroundColor: isSelected ? 'var(--text-primary)' : '#FFF',
                               color: isSelected ? '#FFF' : 'var(--text-primary)',
                               cursor: 'pointer',
                               fontSize: '12px',
-                              fontWeight: 600
+                              fontWeight: 600,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center'
                             }}
                           >
-                            {size}
+                            <span>{size}</span>
+                            {selectedColor && (
+                              <span style={{ fontSize: '9px', fontWeight: 'normal', opacity: 0.8 }}>({sizeStock})</span>
+                            )}
                           </button>
                         );
                       })}

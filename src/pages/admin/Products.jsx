@@ -31,8 +31,9 @@ const TALLA_PRESETS = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL'];
 const EMPTY_FORM = {
   id: '', name: '', sku: '', description: '', price: 59.00,
   offer_price: '', wholesale_price: '', wholesale_min_qty: '',
+  wholesale_tiers: [],
   stock: 10, category_id: '', image_url: '', images: [], active: true,
-  colors: [],   // [{ hex, name, stock }]
+  colors: [],   // [{ hex, name, stock, sizes_stock }]
   sizes: [],    // ['S', 'M', 'L', ...]
 };
 
@@ -108,6 +109,21 @@ export default function Products() {
     setForm(f => ({ ...f, colors: f.colors.map(c => c.hex === hex ? { ...c, stock: parseInt(stock) || 0 } : c) }));
   };
 
+  const updateColorSizeStock = (hex, size, stockValue) => {
+    const val = parseInt(stockValue) || 0;
+    setForm(f => {
+      const updatedColors = f.colors.map(c => {
+        if (c.hex === hex) {
+          const sizes_stock = { ...(c.sizes_stock || {}), [size]: val };
+          const totalStock = Object.values(sizes_stock).reduce((a, b) => a + b, 0);
+          return { ...c, sizes_stock, stock: totalStock };
+        }
+        return c;
+      });
+      return { ...f, colors: updatedColors };
+    });
+  };
+
   const removeColor = (hex) => {
     setForm(f => ({ ...f, colors: f.colors.filter(c => c.hex !== hex) }));
   };
@@ -130,6 +146,7 @@ export default function Products() {
       offer_price: prod.offer_price !== null ? prod.offer_price : '',
       wholesale_price: prod.wholesale_price ?? '',
       wholesale_min_qty: prod.wholesale_min_qty ?? '',
+      wholesale_tiers: prod.wholesale_tiers || [],
       images: prod.images?.length > 0 ? prod.images : [prod.image_url].filter(Boolean),
       colors: prod.colors || [],
       sizes: prod.sizes || [],
@@ -322,10 +339,71 @@ export default function Products() {
                           </div>
                         ))}
                       </div>
-                      <div style={{ marginTop: '8px' }}>
-                        <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Cantidad mínima para mayorista</label>
-                        <input type="number" placeholder="Ej. 6" style={{ ...inputStyle, maxWidth: '120px' }}
-                          value={form.wholesale_min_qty} onChange={e => setForm(f => ({ ...f, wholesale_min_qty: e.target.value }))} />
+                      
+                      {/* Múltiples Escalas por Mayor */}
+                      <div style={{ marginTop: '16px', border: '1px solid var(--border-color)', padding: '14px', backgroundColor: 'var(--bg-primary)' }}>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                          Múltiples Promociones por Mayor (Escalas)
+                        </label>
+                        
+                        {(!form.wholesale_tiers || form.wholesale_tiers.length === 0) ? (
+                          <p style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic', marginBottom: '8px' }}>
+                            No hay escalas de descuento agregadas. Puedes agregar escalas abajo (ej. llevando 6, 12, 50, etc.).
+                          </p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                            {form.wholesale_tiers.map((tier, idx) => (
+                              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#FFF', padding: '6px 10px', border: '1px solid var(--border-color)' }}>
+                                <span style={{ fontSize: '12px', flex: 1 }}>
+                                  Llevando <strong>{tier.min_qty}</strong> o más a <strong>S/. {parseFloat(tier.price).toFixed(2)}</strong> c/u
+                                </span>
+                                <button type="button" onClick={() => {
+                                  const updatedTiers = form.wholesale_tiers.filter((_, i) => i !== idx);
+                                  setForm(f => ({
+                                    ...f,
+                                    wholesale_tiers: updatedTiers,
+                                    wholesale_price: updatedTiers[0]?.price || '',
+                                    wholesale_min_qty: updatedTiers[0]?.min_qty || ''
+                                  }));
+                                }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-secondary)', padding: '2px' }}>
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                          <div style={{ flex: 1 }}>
+                            <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '3px' }}>Cantidad Mínima</label>
+                            <input id="new-tier-qty" type="number" min="1" placeholder="Ej. 6" style={inputStyle} />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '3px' }}>Precio (S/.)</label>
+                            <input id="new-tier-price" type="number" step="0.01" min="0" placeholder="Ej. 45.00" style={inputStyle} />
+                          </div>
+                          <button type="button" onClick={() => {
+                            const qtyInput = document.getElementById('new-tier-qty');
+                            const priceInput = document.getElementById('new-tier-price');
+                            const qtyVal = parseInt(qtyInput?.value);
+                            const priceVal = parseFloat(priceInput?.value);
+                            if (qtyVal && priceVal) {
+                              const newTier = { min_qty: qtyVal, price: priceVal };
+                              const list = [...(form.wholesale_tiers || []), newTier];
+                              list.sort((a, b) => a.min_qty - b.min_qty);
+                              setForm(f => ({
+                                ...f,
+                                wholesale_tiers: list,
+                                wholesale_price: list[0]?.price || '',
+                                wholesale_min_qty: list[0]?.min_qty || ''
+                              }));
+                              qtyInput.value = '';
+                              priceInput.value = '';
+                            }
+                          }} className="btn-secondary" style={{ padding: '8px 12px', height: '36px', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                            + Escala
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -420,23 +498,46 @@ export default function Products() {
 
                       {/* Colores seleccionados con stock */}
                       {form.colors.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Stock por color (el total se suma automáticamente):</p>
-                          {form.colors.map(c => (
-                            <div key={c.hex} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 10px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)' }}>
-                              <div style={{ width: '20px', height: '20px', borderRadius: '50%', backgroundColor: c.hex, border: '1px solid rgba(0,0,0,0.1)', flexShrink: 0 }} />
-                              <span style={{ fontSize: '12px', fontWeight: 500, flex: 1 }}>{c.name}</span>
-                              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Stock:</span>
-                              <input type="number" min="0" value={c.stock}
-                                onChange={e => updateColorStock(c.hex, e.target.value)}
-                                style={{ ...inputStyle, width: '70px', padding: '4px 8px', textAlign: 'center' }} />
-                              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>uds</span>
-                              <button type="button" onClick={() => removeColor(c.hex)}
-                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '2px' }}>
-                                <X size={14} />
-                              </button>
-                            </div>
-                          ))}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '2px' }}>Stock por combinación de Color y Talla (el total se suma automáticamente):</p>
+                          {form.colors.map(c => {
+                            const sizesStock = c.sizes_stock || {};
+                            return (
+                              <div key={c.hex} style={{ border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <div style={{ width: '20px', height: '20px', borderRadius: '50%', backgroundColor: c.hex, border: '1px solid rgba(0,0,0,0.1)', flexShrink: 0 }} />
+                                  <span style={{ fontSize: '13px', fontWeight: 600, flex: 1 }}>{c.name}</span>
+                                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Monto total color: <strong>{c.stock || 0}</strong> uds</span>
+                                  <button type="button" onClick={() => removeColor(c.hex)}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-secondary)', padding: '2px' }}>
+                                    ✕
+                                  </button>
+                                </div>
+                                
+                                {form.sizes.length > 0 ? (
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(70px, 1fr))', gap: '8px', paddingLeft: '30px' }}>
+                                    {form.sizes.map(size => (
+                                      <div key={size} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Talla {size}</label>
+                                        <input type="number" min="0" 
+                                          value={sizesStock[size] !== undefined ? sizesStock[size] : 0}
+                                          onChange={e => updateColorSizeStock(c.hex, size, e.target.value)}
+                                          style={{ ...inputStyle, padding: '4px 6px', textAlign: 'center' }} />
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingLeft: '30px' }}>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Stock:</span>
+                                    <input type="number" min="0" value={c.stock || 0}
+                                      onChange={e => updateColorStock(c.hex, e.target.value)}
+                                      style={{ ...inputStyle, width: '70px', padding: '4px 8px', textAlign: 'center' }} />
+                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>uds</span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                           <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', paddingTop: '4px' }}>
                             Total stock: {form.colors.reduce((s, c) => s + c.stock, 0)} uds
                           </div>

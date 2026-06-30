@@ -1,27 +1,40 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ShoppingBag, Menu, X, Search } from 'lucide-react';
 import { DataService, subscribeToRealtime } from './services/dataService';
 import { applyFavicon } from './utils/favicon';
 
-// Storefront Pages
+// Storefront Pages (cargados inmediatamente — son lo primero que ve el público)
 import Storefront from './pages/Storefront';
 import Catalog from './pages/Catalog';
 import ProductDetail from './pages/ProductDetail';
 import CartDrawer from './components/CartDrawer';
 
-// Admin Pages
-import AdminLogin from './pages/admin/AdminLogin';
-import AdminLayout from './components/AdminLayout';
-import Dashboard from './pages/admin/Dashboard';
-import POS from './pages/admin/POS';
-import Products from './pages/admin/Products';
-import Inventory from './pages/admin/Inventory';
-import Customers from './pages/admin/Customers';
-import CashRegister from './pages/admin/CashRegister';
-import Reports from './pages/admin/Reports';
-import Config from './pages/admin/Config';
-import Logs from './pages/admin/Logs';
+// Admin Pages (cargados bajo demanda con lazy — solo cuando el admin navega ahí)
+const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'));
+const AdminLayout = lazy(() => import('./components/AdminLayout'));
+const Dashboard = lazy(() => import('./pages/admin/Dashboard'));
+const POS = lazy(() => import('./pages/admin/POS'));
+const Products = lazy(() => import('./pages/admin/Products'));
+const Inventory = lazy(() => import('./pages/admin/Inventory'));
+const Customers = lazy(() => import('./pages/admin/Customers'));
+const CashRegister = lazy(() => import('./pages/admin/CashRegister'));
+const Reports = lazy(() => import('./pages/admin/Reports'));
+const Config = lazy(() => import('./pages/admin/Config'));
+const Logs = lazy(() => import('./pages/admin/Logs'));
+
+// Fallback de carga para secciones lazy
+function LazyFallback() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--text-secondary)' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ width: '32px', height: '32px', border: '3px solid var(--border-color)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
+        <p style={{ fontSize: '14px' }}>Cargando módulo...</p>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
 
 // Componente para proteger rutas administrativas
 function ProtectedRoute({ children }) {
@@ -312,9 +325,12 @@ export default function App() {
         <Route 
           path="/admin" 
           element={
-            isAdminLoggedIn 
-              ? <Navigate to="/admin/dashboard" replace /> 
-              : <AdminLogin onLogin={handleAdminLogin} />
+            <Suspense fallback={<LazyFallback />}>
+              {isAdminLoggedIn 
+                ? <Navigate to="/admin/dashboard" replace /> 
+                : <AdminLogin onLogin={handleAdminLogin} />
+              }
+            </Suspense>
           } 
         />
         
@@ -322,20 +338,22 @@ export default function App() {
           path="/admin/*" 
           element={
             <ProtectedRoute>
-              <AdminLayout>
-                <Routes>
-                  <Route path="dashboard" element={<Dashboard />} />
-                  <Route path="pos" element={<POS />} />
-                  <Route path="products" element={<Products />} />
-                  <Route path="inventory" element={<Inventory />} />
-                  <Route path="clients" element={<Customers />} />
-                  <Route path="cash" element={<CashRegister />} />
-                  <Route path="reports" element={<Reports />} />
-                  <Route path="logs" element={<Logs />} />
-                  <Route path="config" element={<Config />} />
-                  <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
-                </Routes>
-              </AdminLayout>
+              <Suspense fallback={<LazyFallback />}>
+                <AdminLayout>
+                  <Routes>
+                    <Route path="dashboard" element={<Dashboard />} />
+                    <Route path="pos" element={<POS />} />
+                    <Route path="products" element={<Products />} />
+                    <Route path="inventory" element={<Inventory />} />
+                    <Route path="clients" element={<Customers />} />
+                    <Route path="cash" element={<CashRegister />} />
+                    <Route path="reports" element={<Reports />} />
+                    <Route path="logs" element={<Logs />} />
+                    <Route path="config" element={<Config />} />
+                    <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
+                  </Routes>
+                </AdminLayout>
+              </Suspense>
             </ProtectedRoute>
           } 
         />

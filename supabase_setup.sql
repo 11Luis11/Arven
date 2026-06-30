@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS public.products (
   images           JSONB DEFAULT '[]',
   colors           JSONB DEFAULT '[]',
   sizes            JSONB DEFAULT '[]',
+  wholesale_tiers  JSONB DEFAULT '[]',
   active           BOOLEAN DEFAULT TRUE,
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   updated_at       TIMESTAMPTZ DEFAULT NOW()
@@ -127,6 +128,7 @@ CREATE TABLE IF NOT EXISTS public.sale_items (
   unit_price   NUMERIC(10,2) NOT NULL DEFAULT 0,
   total_price  NUMERIC(10,2) NOT NULL DEFAULT 0,
   color_hex    TEXT,
+  selected_size TEXT,
   created_at   TIMESTAMPTZ DEFAULT NOW()
 );
 

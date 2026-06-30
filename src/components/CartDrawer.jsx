@@ -38,9 +38,10 @@ export default function CartDrawer({ isOpen, onClose }) {
     window.dispatchEvent(new Event('cart_updated'));
   };
 
-  const updateQuantity = (productId, change) => {
+  const updateQuantity = (cartItemId, change) => {
     const newCart = cart.map(item => {
-      if (item.id === productId) {
+      const matchId = item.cartItemId || item.id;
+      if (matchId === cartItemId) {
         const newQty = item.quantity + change;
         return { ...item, quantity: Math.max(1, newQty) };
       }
@@ -49,8 +50,8 @@ export default function CartDrawer({ isOpen, onClose }) {
     saveCart(newCart);
   };
 
-  const removeItem = (productId) => {
-    const newCart = cart.filter(item => item.id !== productId);
+  const removeItem = (cartItemId) => {
+    const newCart = cart.filter(item => (item.cartItemId || item.id) !== cartItemId);
     saveCart(newCart);
   };
 
@@ -72,10 +73,37 @@ export default function CartDrawer({ isOpen, onClose }) {
     }
   };
 
+  const getItemCartPrice = (item) => {
+    const basePrice = item.offer_price || item.price;
+    let applicableWholesalePrice = null;
+
+    if (Array.isArray(item.wholesale_tiers) && item.wholesale_tiers.length > 0) {
+      const sortedTiers = [...item.wholesale_tiers].sort((a, b) => b.min_qty - a.min_qty);
+      const matchedTier = sortedTiers.find(t => item.quantity >= t.min_qty);
+      if (matchedTier) {
+        applicableWholesalePrice = matchedTier.price;
+      }
+    } else if (item.wholesale_price) {
+      const minQty = item.wholesale_min_qty || 6;
+      if (item.quantity >= minQty) {
+        applicableWholesalePrice = item.wholesale_price;
+      }
+    }
+
+    return applicableWholesalePrice !== null ? applicableWholesalePrice : basePrice;
+  };
+
+  const isWholesaleActive = (item) => {
+    if (Array.isArray(item.wholesale_tiers) && item.wholesale_tiers.length > 0) {
+      const minWholesaleQty = Math.min(...item.wholesale_tiers.map(t => t.min_qty));
+      return item.quantity >= minWholesaleQty;
+    }
+    return item.wholesale_price && item.quantity >= (item.wholesale_min_qty || 6);
+  };
+
   // Calcular totales
   const subtotal = cart.reduce((sum, item) => {
-    const isWholesale = item.wholesale_price && item.quantity >= (item.wholesale_min_qty || 6);
-    const price = isWholesale ? item.wholesale_price : (item.offer_price || item.price);
+    const price = getItemCartPrice(item);
     return sum + (price * item.quantity);
   }, 0);
   
@@ -98,7 +126,9 @@ export default function CartDrawer({ isOpen, onClose }) {
           product_id: item.id,
           product_name: item.name,
           quantity: item.quantity,
-          unit_price: item.offer_price || item.price
+          unit_price: getItemCartPrice(item),
+          color_hex: item.selectedColor ? item.selectedColor.hex : null,
+          selected_size: item.selectedSize || null
         }))
       });
 
@@ -245,9 +275,10 @@ export default function CartDrawer({ isOpen, onClose }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
               {cart.map((item) => {
                 const price = item.offer_price || item.price;
+                const itemId = item.cartItemId || item.id;
                 return (
                   <div 
-                    key={item.id}
+                    key={itemId}
                     style={{
                       display: 'flex',
                       gap: '16px',
@@ -272,15 +303,15 @@ export default function CartDrawer({ isOpen, onClose }) {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ fontSize: '14px', fontWeight: 600 }}>
-                              S/. {((item.wholesale_price && item.quantity >= (item.wholesale_min_qty || 6)) ? item.wholesale_price : (item.offer_price || item.price)).toFixed(2)}
+                              S/. {getItemCartPrice(item).toFixed(2)}
                             </span>
-                            {(item.offer_price || (item.wholesale_price && item.quantity >= (item.wholesale_min_qty || 6))) && (
+                            {(item.offer_price || isWholesaleActive(item)) && (
                               <span style={{ fontSize: '12px', textDecoration: 'line-through', color: 'var(--text-secondary)' }}>
                                 S/. {item.price.toFixed(2)}
                               </span>
                             )}
                           </div>
-                          {item.wholesale_price && item.quantity >= (item.wholesale_min_qty || 6) && (
+                          {isWholesaleActive(item) && (
                             <span style={{ fontSize: '10px', color: 'var(--color-primary)', fontWeight: 600 }}>
                               ★ Tarifa por mayor aplicada
                             </span>
@@ -297,7 +328,7 @@ export default function CartDrawer({ isOpen, onClose }) {
                         }}>
                           <button 
                             className="accessible-touch"
-                            onClick={() => updateQuantity(item.id, -1)}
+                            onClick={() => updateQuantity(itemId, -1)}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px' }}
                             aria-label="Disminuir cantidad"
                           >
@@ -306,7 +337,7 @@ export default function CartDrawer({ isOpen, onClose }) {
                           <span style={{ fontSize: '13px', width: '24px', textAlign: 'center' }}>{item.quantity}</span>
                           <button 
                             className="accessible-touch"
-                            onClick={() => updateQuantity(item.id, 1)}
+                            onClick={() => updateQuantity(itemId, 1)}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px' }}
                             aria-label="Aumentar cantidad"
                           >
@@ -315,7 +346,7 @@ export default function CartDrawer({ isOpen, onClose }) {
                         </div>
 
                         <button 
-                          onClick={() => removeItem(item.id)}
+                          onClick={() => removeItem(itemId)}
                           style={{
                             background: 'none',
                             border: 'none',
