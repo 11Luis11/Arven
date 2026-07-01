@@ -57,6 +57,8 @@ export default function Products() {
   const [catUploading, setCatUploading] = useState(false);
   const [uploadingColorHex, setUploadingColorHex] = useState(null);
   const [msg, setMsg] = useState({ type: '', text: '' });
+  const [newSizeTierQty, setNewSizeTierQty] = useState({});
+  const [newSizeTierPrice, setNewSizeTierPrice] = useState({});
 
   const loadData = async () => {
     const [prods, cats, colors] = await Promise.all([
@@ -138,18 +140,42 @@ export default function Products() {
 
   // --- PRODUCTOS ---
   const handleOpenCreate = () => {
-    setForm({ ...EMPTY_FORM, category_id: categories[0]?.id || '', image_url: '', images: [], colors: [], sizes: ['S', 'M', 'L'] });
+    setForm({ 
+      ...EMPTY_FORM, 
+      category_id: categories[0]?.id || '', 
+      image_url: '', 
+      images: [], 
+      colors: [], 
+      sizes: ['S', 'M', 'L'],
+      simple_promos: [],
+      size_prices: {}
+    });
     setEditorTab('general');
     setIsEditing(true);
   };
 
   const handleOpenEdit = (prod) => {
+    const simplePromos = (prod.wholesale_tiers || []).find(t => t.type === 'simple_promos')?.data || [];
+    const sizePrices = (prod.wholesale_tiers || []).find(t => t.type === 'size_prices')?.data || {};
+
+    const cleanSizePrices = {};
+    (prod.sizes || []).forEach(size => {
+      const sData = sizePrices[size] || {};
+      cleanSizePrices[size] = {
+        price: sData.price || '',
+        offer_price: sData.offer_price || '',
+        wholesale_tiers: sData.wholesale_tiers || []
+      };
+    });
+
     setForm({
       ...prod,
       offer_price: prod.offer_price !== null ? prod.offer_price : '',
-      wholesale_price: prod.wholesale_price ?? '',
-      wholesale_min_qty: prod.wholesale_min_qty ?? '',
-      wholesale_tiers: prod.wholesale_tiers || [],
+      wholesale_price: '',
+      wholesale_min_qty: '',
+      wholesale_tiers: [],
+      simple_promos: simplePromos,
+      size_prices: cleanSizePrices,
       images: prod.images?.length > 0 ? prod.images : [prod.image_url].filter(Boolean),
       colors: prod.colors || [],
       sizes: prod.sizes || [],
@@ -186,19 +212,43 @@ export default function Products() {
     if (!targetCategoryId) { showMsg('error', 'Crea una categoría primero.'); return; }
     
     const colorImages = form.colors.map(col => col.image_url).filter(Boolean);
+    
+    // Empacar las promociones simples y precios de talla dentro de wholesale_tiers
+    const packedTiers = [
+      { type: 'simple_promos', data: form.simple_promos || [] },
+      { type: 'size_prices', data: form.size_prices || {} }
+    ];
+
+    // Obtener precio regular y de oferta de la primera talla para propósitos de listado general
+    let calculatedPrice = 0;
+    let calculatedOfferPrice = null;
+    const sizesList = form.sizes || [];
+    if (sizesList.length > 0) {
+      const firstSize = sizesList[0];
+      const sizePriceData = form.size_prices?.[firstSize] || {};
+      calculatedPrice = parseFloat(sizePriceData.price) || 0;
+      calculatedOfferPrice = (sizePriceData.offer_price === '' || sizePriceData.offer_price === undefined) ? null : parseFloat(sizePriceData.offer_price) || null;
+    }
+
     const payload = {
       ...form,
       category_id: targetCategoryId,
-      price: parseFloat(form.price) || 0,
-      offer_price: form.offer_price === '' ? null : parseFloat(form.offer_price) || null,
-      wholesale_price: form.wholesale_price === '' ? null : parseFloat(form.wholesale_price) || null,
-      wholesale_min_qty: form.wholesale_min_qty === '' ? null : parseInt(form.wholesale_min_qty) || null,
+      price: calculatedPrice,
+      offer_price: calculatedOfferPrice,
+      wholesale_price: null,
+      wholesale_min_qty: null,
+      wholesale_tiers: packedTiers,
       stock: form.colors.length > 0
         ? form.colors.reduce((s, c) => s + c.stock, 0)
         : parseInt(form.stock) || 0,
       image_url: colorImages[0] || form.image_url || '',
       images: colorImages.length > 0 ? colorImages : [form.image_url].filter(Boolean),
     };
+
+    // Eliminar atributos temporales que no existen en el esquema SQL de Supabase
+    delete payload.simple_promos;
+    delete payload.size_prices;
+
     const isNew = !form.id;
     try {
       await DataService.saveProduct(payload);
@@ -382,94 +432,9 @@ export default function Products() {
                 {/* TAB 2: PRECIOS Y ESCALAS */}
                 {editorTab === 'prices' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: 'var(--text-primary)' }}>Precio Regular (S/.) *</label>
-                        <input type="number" step="0.01" required style={inputStyle} value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="Ej. 59.00" />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, marginBottom: '6px', color: 'var(--text-primary)' }}>Precio Oferta (S/.) <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal' }}>(Opcional)</span></label>
-                        <input type="number" step="0.01" style={inputStyle} value={form.offer_price} onChange={e => setForm(f => ({ ...f, offer_price: e.target.value }))} placeholder="Ej. 49.00" />
-                      </div>
-                    </div>
 
-                    {/* Múltiples Escalas por Mayor */}
-                    <div style={{ border: '1px solid var(--border-color)', padding: '16px', backgroundColor: 'var(--bg-primary)' }}>
-                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                        Escalas de Descuento al por Mayor
-                      </label>
-                      <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                        Define precios reducidos según la cantidad que lleve el cliente (ej. 6 unidades a S/.45, 12 a S/.40).
-                      </p>
-                      
-                      {(!form.wholesale_tiers || form.wholesale_tiers.length === 0) ? (
-                        <p style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic', marginBottom: '12px', backgroundColor: '#FFF', padding: '10px', border: '1px dashed var(--border-color)' }}>
-                          No hay escalas configuradas. Añade una abajo.
-                        </p>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-                          {form.wholesale_tiers.map((tier, idx) => (
-                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#FFF', padding: '8px 12px', border: '1px solid var(--border-color)' }}>
-                              <span style={{ fontSize: '12px', flex: 1, fontWeight: 500 }}>
-                                A partir de <strong>{tier.min_qty}</strong> unidades: <strong style={{ color: 'var(--color-primary)' }}>S/. {parseFloat(tier.price).toFixed(2)}</strong> c/u
-                              </span>
-                              <button type="button" onClick={() => {
-                                const updatedTiers = form.wholesale_tiers.filter((_, i) => i !== idx);
-                                setForm(f => ({
-                                  ...f,
-                                  wholesale_tiers: updatedTiers,
-                                  wholesale_price: updatedTiers[0]?.price || '',
-                                  wholesale_min_qty: updatedTiers[0]?.min_qty || ''
-                                }));
-                              }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-secondary)', padding: '4px' }}>
-                                ✕
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', backgroundColor: '#FFF', padding: '12px', border: '1px solid var(--border-color)' }}>
-                        <div style={{ flex: 1 }}>
-                          <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Llevando (Min. unidades)</label>
-                          <input id="new-tier-qty" type="number" min="1" placeholder="Ej. 6" style={inputStyle} />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Precio Unitario (S/.)</label>
-                          <input id="new-tier-price" type="number" step="0.01" min="0" placeholder="Ej. 45.00" style={inputStyle} />
-                        </div>
-                        <button type="button" onClick={() => {
-                          const qtyInput = document.getElementById('new-tier-qty');
-                          const priceInput = document.getElementById('new-tier-price');
-                          const qtyVal = parseInt(qtyInput?.value);
-                          const priceVal = parseFloat(priceInput?.value);
-                          if (qtyVal && priceVal) {
-                            const newTier = { min_qty: qtyVal, price: priceVal };
-                            const list = [...(form.wholesale_tiers || []), newTier];
-                            list.sort((a, b) => a.min_qty - b.min_qty);
-                            setForm(f => ({
-                              ...f,
-                              wholesale_tiers: list,
-                              wholesale_price: list[0]?.price || '',
-                              wholesale_min_qty: list[0]?.min_qty || ''
-                            }));
-                            qtyInput.value = '';
-                            priceInput.value = '';
-                          }
-                        }} className="btn-secondary" style={{ padding: '8px 16px', height: '36px', fontSize: '12px', whiteSpace: 'nowrap', fontWeight: 600 }}>
-                          + Agregar Escala
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB 3: TALLAS, COLORES Y STOCK */}
-                {editorTab === 'stock' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    
-                    {/* Tallas */}
-                    <div>
+                    {/* Tallas - Activación Directa */}
+                    <div style={{ backgroundColor: '#F9FAFB', border: '1px solid var(--border-color)', padding: '16px' }}>
                       <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px', color: 'var(--text-secondary)' }}>1. Activa las Tallas</label>
                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         {TALLA_PRESETS.map(s => {
@@ -487,6 +452,240 @@ export default function Products() {
                         })}
                       </div>
                     </div>
+
+                    {/* Promociones Simples (Ej. 3 por 80, 4 por 100) */}
+                    <div style={{ border: '1px solid var(--border-color)', padding: '16px', backgroundColor: 'var(--bg-primary)' }}>
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                        Promociones Simples (Ej. 3 por S/. 80, 4 por S/. 100)
+                      </label>
+                      <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+                        Define promociones de precio fijo por paquete (ej. 3 polos por un total de S/.80). Estas promociones afectarán a todas las tallas.
+                      </p>
+
+                      {(!form.simple_promos || form.simple_promos.length === 0) ? (
+                        <p style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic', marginBottom: '12px', backgroundColor: '#FFF', padding: '10px', border: '1px dashed var(--border-color)' }}>
+                          No hay promociones simples configuradas.
+                        </p>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                          {form.simple_promos.map((promo, idx) => (
+                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#FFF', padding: '8px 12px', border: '1px solid var(--border-color)' }}>
+                              <span style={{ fontSize: '12px', flex: 1, fontWeight: 500 }}>
+                                Llevando <strong>{promo.qty}</strong> unidades por un total de: <strong style={{ color: 'var(--color-primary)' }}>S/. {parseFloat(promo.price).toFixed(2)}</strong> (Promedio: S/. {parseFloat(promo.price / promo.qty).toFixed(2)} c/u)
+                              </span>
+                              <button type="button" onClick={() => {
+                                const updatedPromos = form.simple_promos.filter((_, i) => i !== idx);
+                                setForm(f => ({ ...f, simple_promos: updatedPromos }));
+                              }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-secondary)', padding: '4px' }}>
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', backgroundColor: '#FFF', padding: '12px', border: '1px solid var(--border-color)' }}>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Cantidad de Polos</label>
+                          <input id="new-promo-qty" type="number" min="1" placeholder="Ej. 3" style={inputStyle} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Precio Total del Paquete (S/.)</label>
+                          <input id="new-promo-price" type="number" step="0.01" min="0" placeholder="Ej. 80.00" style={inputStyle} />
+                        </div>
+                        <button type="button" onClick={() => {
+                          const qtyInput = document.getElementById('new-promo-qty');
+                          const priceInput = document.getElementById('new-promo-price');
+                          const qtyVal = parseInt(qtyInput?.value);
+                          const priceVal = parseFloat(priceInput?.value);
+                          if (qtyVal && priceVal) {
+                            const newPromo = { qty: qtyVal, price: priceVal };
+                            const list = [...(form.simple_promos || []), newPromo];
+                            list.sort((a, b) => a.qty - b.qty);
+                            setForm(f => ({ ...f, simple_promos: list }));
+                            qtyInput.value = '';
+                            priceInput.value = '';
+                          }
+                        }} className="btn-secondary" style={{ padding: '8px 16px', height: '36px', fontSize: '12px', whiteSpace: 'nowrap', fontWeight: 600 }}>
+                          + Agregar Promoción
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Precios Diferenciados por Talla */}
+                    <div style={{ backgroundColor: '#F9FAFB', border: '1px solid var(--border-color)', padding: '16px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px', color: 'var(--text-secondary)' }}>
+                        Precios y Escalas por Talla
+                      </label>
+                      {form.sizes.length === 0 ? (
+                        <p style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic', margin: 0 }}>
+                          (Activa al menos una talla en la pestaña "3. Tallas, Colores y Stock" para configurar precios diferenciados por talla).
+                        </p>
+                      ) : (
+                        <>
+                          <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+                            Especifica el precio regular y el de oferta (opcional) de manera obligatoria por cada talla, además de sus escalas al por mayor.
+                          </p>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            {form.sizes.map(size => {
+                              const sizeData = form.size_prices?.[size] || { price: '', offer_price: '', wholesale_tiers: [] };
+                              const sizeTiers = sizeData.wholesale_tiers || [];
+                              return (
+                                <div key={size} style={{ border: '1px solid var(--border-color)', backgroundColor: '#FFF', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                                    <span style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--text-primary)' }}>Talla {size}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <label style={{ fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>P. Regular (S/.) *:</label>
+                                        <input 
+                                          type="number" 
+                                          step="0.01" 
+                                          required
+                                          placeholder="Ej. 59.00" 
+                                          style={{ ...inputStyle, width: '110px', padding: '6px 8px' }} 
+                                          value={sizeData.price || ''}
+                                          onChange={e => {
+                                            const val = e.target.value;
+                                            setForm(f => ({
+                                              ...f,
+                                              size_prices: {
+                                                ...(f.size_prices || {}),
+                                                [size]: { ...(f.size_prices?.[size] || {}), price: val }
+                                              }
+                                            }));
+                                          }}
+                                        />
+                                      </div>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <label style={{ fontSize: '12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>P. Oferta (S/.):</label>
+                                        <input 
+                                          type="number" 
+                                          step="0.01" 
+                                          placeholder="Opcional" 
+                                          style={{ ...inputStyle, width: '110px', padding: '6px 8px' }} 
+                                          value={sizeData.offer_price || ''}
+                                          onChange={e => {
+                                            const val = e.target.value;
+                                            setForm(f => ({
+                                              ...f,
+                                              size_prices: {
+                                                ...(f.size_prices || {}),
+                                                [size]: { ...(f.size_prices?.[size] || {}), offer_price: val }
+                                              }
+                                            }));
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* List of tiers for this size */}
+                                  <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
+                                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '8px' }}>
+                                      Escalas de Descuento (Talla {size})
+                                    </span>
+                                    
+                                    {sizeTiers.length === 0 ? (
+                                      <p style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic', marginBottom: '8px' }}>
+                                        No hay escalas configuradas para esta talla.
+                                      </p>
+                                    ) : (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
+                                        {sizeTiers.map((tier, idx) => (
+                                          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: 'var(--bg-primary)', padding: '6px 10px', border: '1px solid var(--border-color)' }}>
+                                            <span style={{ fontSize: '11px', flex: 1 }}>
+                                              A partir de <strong>{tier.min_qty}</strong> unidades: <strong style={{ color: 'var(--color-primary)' }}>S/. {parseFloat(tier.price).toFixed(2)}</strong> c/u
+                                            </span>
+                                            <button 
+                                              type="button" 
+                                              onClick={() => {
+                                                const updatedTiers = sizeTiers.filter((_, i) => i !== idx);
+                                                setForm(f => ({
+                                                  ...f,
+                                                  size_prices: {
+                                                    ...(f.size_prices || {}),
+                                                    [size]: { ...(f.size_prices?.[size] || {}), wholesale_tiers: updatedTiers }
+                                                  }
+                                                }));
+                                              }} 
+                                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-secondary)', fontSize: '12px' }}
+                                            >
+                                              ✕
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    {/* Form to add tier to this size */}
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', backgroundColor: 'var(--bg-primary)', padding: '8px', border: '1px solid var(--border-color)' }}>
+                                      <div style={{ flex: 1 }}>
+                                        <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Min. unidades</label>
+                                        <input 
+                                          type="number" 
+                                          min="1" 
+                                          placeholder="Ej. 6" 
+                                          style={{ ...inputStyle, padding: '4px 8px' }} 
+                                          value={newSizeTierQty[size] || ''}
+                                          onChange={e => setNewSizeTierQty(prev => ({ ...prev, [size]: e.target.value }))}
+                                        />
+                                      </div>
+                                      <div style={{ flex: 1 }}>
+                                        <label style={{ display: 'block', fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Precio (S/.)</label>
+                                        <input 
+                                          type="number" 
+                                          step="0.01" 
+                                          min="0" 
+                                          placeholder="Ej. 45.00" 
+                                          style={{ ...inputStyle, padding: '4px 8px' }} 
+                                          value={newSizeTierPrice[size] || ''}
+                                          onChange={e => setNewSizeTierPrice(prev => ({ ...prev, [size]: e.target.value }))}
+                                        />
+                                      </div>
+                                      <button 
+                                        type="button" 
+                                        onClick={() => {
+                                          const qtyVal = parseInt(newSizeTierQty[size]);
+                                          const priceVal = parseFloat(newSizeTierPrice[size]);
+                                          if (qtyVal && priceVal) {
+                                            const newTier = { min_qty: qtyVal, price: priceVal };
+                                            const list = [...(sizeTiers || []), newTier];
+                                            list.sort((a, b) => a.min_qty - b.min_qty);
+                                            
+                                            setForm(f => ({
+                                              ...f,
+                                              size_prices: {
+                                                ...(f.size_prices || {}),
+                                                [size]: { ...(f.size_prices?.[size] || {}), wholesale_tiers: list }
+                                              }
+                                            }));
+                                            
+                                            setNewSizeTierQty(prev => ({ ...prev, [size]: '' }));
+                                            setNewSizeTierPrice(prev => ({ ...prev, [size]: '' }));
+                                          }
+                                        }} 
+                                        className="btn-secondary" 
+                                        style={{ padding: '6px 12px', height: '30px', fontSize: '11px', fontWeight: 600 }}
+                                      >
+                                        + Añadir Escala
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 3: TALLAS, COLORES Y STOCK */}
+                {editorTab === 'stock' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+
 
                     {/* Colores */}
                     <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>

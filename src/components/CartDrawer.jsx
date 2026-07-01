@@ -73,32 +73,112 @@ export default function CartDrawer({ isOpen, onClose }) {
     }
   };
 
-  const getItemCartPrice = (item) => {
-    const basePrice = item.offer_price || item.price;
-    let applicableWholesalePrice = null;
+  const getProductGroupTotalPrice = (productId, groupItems, product) => {
+    if (!product) return 0;
+    
+    const sizePrices = (product.wholesale_tiers || []).find(t => t.type === 'size_prices')?.data || {};
+    const simplePromos = (product.wholesale_tiers || []).find(t => t.type === 'simple_promos')?.data || [];
 
-    if (Array.isArray(item.wholesale_tiers) && item.wholesale_tiers.length > 0) {
-      const sortedTiers = [...item.wholesale_tiers].sort((a, b) => b.min_qty - a.min_qty);
-      const matchedTier = sortedTiers.find(t => item.quantity >= t.min_qty);
-      if (matchedTier) {
-        applicableWholesalePrice = matchedTier.price;
+    const totalQty = groupItems.reduce((sum, i) => sum + i.quantity, 0);
+
+    // Calcular cantidad por talla en el carrito
+    const sizeQuantities = {};
+    groupItems.forEach(i => {
+      sizeQuantities[i.selectedSize] = (sizeQuantities[i.selectedSize] || 0) + i.quantity;
+    });
+
+    const units = [];
+    groupItems.forEach(item => {
+      const size = item.selectedSize;
+      const sizePriceData = sizePrices[size];
+      
+      const regularPrice = (sizePriceData?.offer_price && sizePriceData.offer_price !== '')
+        ? parseFloat(sizePriceData.offer_price)
+        : ((sizePriceData?.price && sizePriceData.price !== '')
+          ? parseFloat(sizePriceData.price)
+          : (product.offer_price !== null ? parseFloat(product.offer_price) : parseFloat(product.price)));
+
+      for (let k = 0; k < item.quantity; k++) {
+        units.push({
+          regularPrice,
+          size
+        });
       }
-    } else if (item.wholesale_price) {
-      const minQty = item.wholesale_min_qty || 6;
-      if (item.quantity >= minQty) {
-        applicableWholesalePrice = item.wholesale_price;
+    });
+
+    const sortedPromos = [...simplePromos]
+      .filter(p => p.qty && p.price)
+      .sort((a, b) => b.qty - a.qty);
+
+    let remainingQty = totalQty;
+    let totalPrice = 0;
+
+    for (const promo of sortedPromos) {
+      const promoQty = parseInt(promo.qty);
+      const promoPrice = parseFloat(promo.price);
+      while (remainingQty >= promoQty) {
+        totalPrice += promoPrice;
+        remainingQty -= promoQty;
       }
     }
 
-    return applicableWholesalePrice !== null ? applicableWholesalePrice : basePrice;
+    if (remainingQty > 0) {
+      const remainingUnits = units.slice(0, remainingQty);
+      for (const unit of remainingUnits) {
+        // Evaluar si aplica mayorista para la talla específica
+        const sizeData = sizePrices[unit.size];
+        const sizeTiers = sizeData?.wholesale_tiers || [];
+        const sizeQty = sizeQuantities[unit.size] || 0;
+
+        const matchedSizeTier = [...sizeTiers]
+          .sort((a, b) => b.min_qty - a.min_qty)
+          .find(t => sizeQty >= t.min_qty);
+
+        if (matchedSizeTier) {
+          totalPrice += parseFloat(matchedSizeTier.price);
+        } else {
+          totalPrice += unit.regularPrice;
+        }
+      }
+    }
+
+    return totalPrice;
+  };
+
+  const getItemCartPrice = (item) => {
+    const groupItems = cart.filter(i => i.id === item.id);
+    const totalQty = groupItems.reduce((sum, i) => sum + i.quantity, 0);
+    
+    if (totalQty === 0) {
+      const sizePrices = (item.wholesale_tiers || []).find(t => t.type === 'size_prices')?.data || {};
+      const sizeData = sizePrices[item.selectedSize];
+      const basePrice = (sizeData?.offer_price && sizeData.offer_price !== '')
+        ? parseFloat(sizeData.offer_price)
+        : ((sizeData?.price && sizeData.price !== '')
+          ? parseFloat(sizeData.price)
+          : (item.offer_price !== null ? item.offer_price : item.price));
+      return basePrice;
+    }
+    
+    const totalGroupPrice = getProductGroupTotalPrice(item.id, groupItems, item);
+    return totalGroupPrice / totalQty;
   };
 
   const isWholesaleActive = (item) => {
-    if (Array.isArray(item.wholesale_tiers) && item.wholesale_tiers.length > 0) {
-      const minWholesaleQty = Math.min(...item.wholesale_tiers.map(t => t.min_qty));
-      return item.quantity >= minWholesaleQty;
-    }
-    return item.wholesale_price && item.quantity >= (item.wholesale_min_qty || 6);
+    const groupItems = cart.filter(i => i.id === item.id);
+    const sizePrices = (item.wholesale_tiers || []).find(t => t.type === 'size_prices')?.data || {};
+    
+    const sizeQuantities = {};
+    groupItems.forEach(i => {
+      sizeQuantities[i.selectedSize] = (sizeQuantities[i.selectedSize] || 0) + i.quantity;
+    });
+
+    return groupItems.some(i => {
+      const sizeData = sizePrices[i.selectedSize];
+      const sizeTiers = sizeData?.wholesale_tiers || [];
+      const sizeQty = sizeQuantities[i.selectedSize] || 0;
+      return sizeTiers.some(t => sizeQty >= t.min_qty);
+    });
   };
 
   // Calcular totales

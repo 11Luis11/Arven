@@ -65,6 +65,7 @@ export default function POS() {
   // NEW: Bottom bar client search
   const [clientSearchQuery, setClientSearchQuery] = useState('');
   const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [config, setConfig] = useState(null);
 
   const loadData = async () => {
     const prods = await DataService.getProducts();
@@ -81,6 +82,9 @@ export default function POS() {
       setIsCashOpen(false);
       setCashSessionId('');
     }
+
+    const cfg = await DataService.getConfig();
+    setConfig(cfg);
   };
 
   useEffect(() => {
@@ -294,29 +298,102 @@ export default function POS() {
 
   // Helper: get unit price for an item
   // El descuento mayorista aplica si la suma total de variantes del MISMO producto base
-  // (distintos colores/tallas) alcanza el minimo mayorista.
-  const getItemUnitPrice = (item, allItems = orderItems) => {
-    const basePrice = item.offer_price || item.price;
-    const totalQtyForProduct = allItems
-      .filter(i => i.id === item.id)
-      .reduce((sum, i) => sum + i.quantity, 0);
+  // (distintos colores/tallas) alcanza el minimo mayorista. También aplica precios por talla y promociones simples.
+  const getProductGroupTotalPrice = (productId, groupItems, product) => {
+    if (!product) return 0;
+    
+    // Extraer configuraciones de tallas y promociones simples
+    const sizePrices = (product.wholesale_tiers || []).find(t => t.type === 'size_prices')?.data || {};
+    const simplePromos = (product.wholesale_tiers || []).find(t => t.type === 'simple_promos')?.data || [];
 
-    let applicableWholesalePrice = null;
+    const totalQty = groupItems.reduce((sum, i) => sum + i.quantity, 0);
 
-    if (Array.isArray(item.wholesale_tiers) && item.wholesale_tiers.length > 0) {
-      const sortedTiers = [...item.wholesale_tiers].sort((a, b) => b.min_qty - a.min_qty);
-      const matchedTier = sortedTiers.find(t => totalQtyForProduct >= t.min_qty);
-      if (matchedTier) {
-        applicableWholesalePrice = matchedTier.price;
+    // Calcular cantidad por talla en la orden
+    const sizeQuantities = {};
+    groupItems.forEach(i => {
+      sizeQuantities[i.selectedSize] = (sizeQuantities[i.selectedSize] || 0) + i.quantity;
+    });
+
+    // Expandir variantes en unidades individuales
+    const units = [];
+    groupItems.forEach(item => {
+      const size = item.selectedSize;
+      const sizePriceData = sizePrices[size];
+      
+      const regularPrice = (sizePriceData?.offer_price && sizePriceData.offer_price !== '')
+        ? parseFloat(sizePriceData.offer_price)
+        : ((sizePriceData?.price && sizePriceData.price !== '')
+          ? parseFloat(sizePriceData.price)
+          : (product.offer_price !== null ? parseFloat(product.offer_price) : parseFloat(product.price)));
+
+      for (let k = 0; k < item.quantity; k++) {
+        units.push({
+          regularPrice,
+          size
+        });
       }
-    } else if (item.wholesale_price) {
-      const minQty = item.wholesale_min_qty || 6;
-      if (totalQtyForProduct >= minQty) {
-        applicableWholesalePrice = item.wholesale_price;
+    });
+
+    // Ordenar promociones por cantidad descendente
+    const sortedPromos = [...simplePromos]
+      .filter(p => p.qty && p.price)
+      .sort((a, b) => b.qty - a.qty);
+
+    let remainingQty = totalQty;
+    let totalPrice = 0;
+
+    // Aplicar promociones simples de forma codiciosa (greedy)
+    for (const promo of sortedPromos) {
+      const promoQty = parseInt(promo.qty);
+      const promoPrice = parseFloat(promo.price);
+      while (remainingQty >= promoQty) {
+        totalPrice += promoPrice;
+        remainingQty -= promoQty;
       }
     }
 
-    return applicableWholesalePrice !== null ? applicableWholesalePrice : basePrice;
+    // Cobrar unidades restantes con precio unitario o mayorista (con variaciones por talla)
+    if (remainingQty > 0) {
+      const remainingUnits = units.slice(0, remainingQty);
+      for (const unit of remainingUnits) {
+        // Evaluar si aplica mayorista para la talla específica
+        const sizeData = sizePrices[unit.size];
+        const sizeTiers = sizeData?.wholesale_tiers || [];
+        const sizeQty = sizeQuantities[unit.size] || 0;
+
+        const matchedSizeTier = [...sizeTiers]
+          .sort((a, b) => b.min_qty - a.min_qty)
+          .find(t => sizeQty >= t.min_qty);
+
+        if (matchedSizeTier) {
+          totalPrice += parseFloat(matchedSizeTier.price);
+        } else {
+          totalPrice += unit.regularPrice;
+        }
+      }
+    }
+
+    return totalPrice;
+  };
+
+  const getItemUnitPrice = (item, allItems = orderItems) => {
+    const freshProd = products.find(p => p.id === item.id) || item;
+    const groupItems = allItems.filter(i => i.id === item.id);
+    const totalQty = groupItems.reduce((sum, i) => sum + i.quantity, 0);
+    
+    if (totalQty === 0) {
+      const sizePrices = (freshProd.wholesale_tiers || []).find(t => t.type === 'size_prices')?.data || {};
+      const sizeData = sizePrices[item.selectedSize];
+      const basePrice = (sizeData?.offer_price && sizeData.offer_price !== '')
+        ? parseFloat(sizeData.offer_price)
+        : ((sizeData?.price && sizeData.price !== '')
+          ? parseFloat(sizeData.price)
+          : (freshProd.offer_price !== null ? freshProd.offer_price : freshProd.price));
+      return basePrice;
+    }
+    
+    const totalGroupPrice = getProductGroupTotalPrice(item.id, groupItems, freshProd);
+    return totalGroupPrice / totalQty;
   };
 
   // Totales (includes item-level discounts)
@@ -329,35 +406,229 @@ export default function POS() {
   const total = Math.max(0, subtotal - parseFloat(discountAmount || 0));
   const totalItemsCount = orderItems.reduce((s, i) => s + i.quantity, 0);
 
-  // WhatsApp functions
-  const generateWhatsAppMessage = (sale) => {
-    let msg = `🧾 *CARRILLO STORE*\n`;
-    msg += `Comprobante: ${sale.document_type || 'Ticket'} N° ${sale.invoice_number}\n`;
-    msg += `Fecha: ${new Date(sale.created_at).toLocaleDateString()}\n`;
-    msg += `─────────────\n`;
-    sale.items.forEach(item => {
-      msg += `${item.quantity}x ${item.product_name}\n`;
-      msg += `   S/. ${formatNoRound(item.unit_price)} c/u → S/. ${formatNoRound(item.unit_price * item.quantity)}\n`;
+  // WhatsApp functions — generate PDF, upload, and share link
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
+
+  const getImageDataUrl = (url) => {
+    return new Promise((resolve) => {
+      if (!url) return resolve(null);
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          const dataUrl = canvas.toDataURL('image/png');
+          resolve(dataUrl);
+        } catch (err) {
+          console.error('Error base64 image conversion:', err);
+          resolve(null);
+        }
+      };
+      img.onerror = () => {
+        resolve(null);
+      };
+      img.src = url;
     });
-    msg += `─────────────\n`;
-    if (sale.discount_amount > 0) {
-      msg += `Descuento: -S/. ${formatNoRound(sale.discount_amount)}\n`;
-    }
-    msg += `*TOTAL: S/. ${formatNoRound(sale.total_amount)}*\n`;
-    msg += `─────────────\n`;
-    msg += `¡Gracias por tu compra! 🛍️\n`;
-    msg += `www.carrillostore.com`;
-    return msg;
   };
 
-  const openWhatsApp = (phone, message) => {
-    let cleanPhone = phone.replace(/[^0-9]/g, '');
-    // Add Peru country code if it's a 9-digit number starting with 9
-    if (cleanPhone.length === 9 && cleanPhone.startsWith('9')) {
-      cleanPhone = '51' + cleanPhone;
+  const generatePdfBlob = async (sale) => {
+    const { jsPDF } = window.jspdf || {};
+    let activeJsPDF = jsPDF;
+    if (!activeJsPDF) {
+      const mod = await import('jspdf');
+      activeJsPDF = mod.jsPDF || mod.default;
     }
-    const encodedMsg = encodeURIComponent(message);
-    window.open(`https://wa.me/${cleanPhone}?text=${encodedMsg}`, '_blank');
+    const doc = new activeJsPDF({ unit: 'mm', format: [80, 250] });
+
+    let logoBase64 = null;
+    if (config?.storeLogoUrl) {
+      logoBase64 = await getImageDataUrl(config.storeLogoUrl);
+    }
+
+    return _buildPdf(doc, sale, logoBase64);
+  };
+
+  const _buildPdf = (doc, sale, logoBase64) => {
+    const storeName = (config?.businessName || config?.storeName || 'CARRILLO STORE').toUpperCase();
+    const address = config?.fiscalAddress || '';
+    const phone = config?.ticketPhone || '';
+    const ruc = config?.ruc || '';
+    const saleDate = new Date(sale.created_at);
+    const isInvoice = sale.document_type === 'Boleta' || sale.document_type === 'Factura';
+    let y = 8;
+    const lm = 4; // left margin
+    const pw = 72; // printable width
+
+    // Header Logo
+    if (logoBase64) {
+      try {
+        doc.addImage(logoBase64, 'PNG', 25, y, 30, 15);
+        y += 18;
+      } catch (err) {
+        console.error('Error drawing logo in PDF:', err);
+      }
+    }
+
+    // Header
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'bold');
+    doc.text(storeName, 40, y, { align: 'center' });
+    y += 5;
+
+    if (ruc) {
+      doc.setFontSize(7);
+      doc.setFont(undefined, 'normal');
+      doc.text(`RUC: ${ruc}`, 40, y, { align: 'center' });
+      y += 3.5;
+    }
+    if (address) {
+      doc.setFontSize(7);
+      doc.text(address, 40, y, { align: 'center', maxWidth: pw });
+      y += 3.5;
+    }
+    if (phone) {
+      doc.setFontSize(7);
+      doc.text(`Tel: ${phone}`, 40, y, { align: 'center' });
+      y += 3.5;
+    }
+
+    // Divider
+    y += 1;
+    doc.setLineDashPattern([1, 1], 0);
+    doc.line(lm, y, lm + pw, y);
+    y += 4;
+
+    // Document info
+    doc.setFontSize(8);
+    doc.setFont(undefined, 'bold');
+    const docLabel = isInvoice ? (sale.document_type === 'Factura' ? 'FACTURA ELECTRÓNICA' : 'BOLETA DE VENTA') : 'TICKET DE VENTA';
+    doc.text(docLabel, 40, y, { align: 'center' });
+    y += 4;
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(7);
+    doc.text(`N°: ${sale.invoice_number}`, lm, y); y += 3.5;
+    doc.text(`Fecha: ${saleDate.toLocaleDateString()}`, lm, y);
+    doc.text(`Hora: ${saleDate.toLocaleTimeString()}`, lm + 38, y); y += 3.5;
+    doc.text(`Cajero: ${sale.operator || ''}`, lm, y); y += 3.5;
+    doc.text(`Cliente: ${sale.customer_name}`, lm, y); y += 3.5;
+    doc.text(`Pago: ${sale.payment_method}`, lm, y); y += 2;
+
+    // Divider
+    y += 1;
+    doc.line(lm, y, lm + pw, y);
+    y += 3;
+
+    // Items header
+    doc.setFontSize(7);
+    doc.setFont(undefined, 'bold');
+    doc.text('PRODUCTO', lm, y);
+    doc.text('CTD', lm + 40, y, { align: 'center' });
+    doc.text('P.U.', lm + 52, y, { align: 'right' });
+    doc.text('TOTAL', lm + pw, y, { align: 'right' });
+    y += 1;
+    doc.line(lm, y, lm + pw, y);
+    y += 3;
+
+    // Items
+    doc.setFont(undefined, 'normal');
+    (sale.items || []).forEach(item => {
+      const name = item.product_name.length > 22 ? item.product_name.substring(0, 22) + '…' : item.product_name;
+      doc.text(name, lm, y);
+      doc.text(String(item.quantity), lm + 40, y, { align: 'center' });
+      doc.text(formatNoRound(item.unit_price), lm + 52, y, { align: 'right' });
+      doc.text(formatNoRound(item.quantity * item.unit_price), lm + pw, y, { align: 'right' });
+      y += 3.5;
+    });
+
+    // Divider
+    y += 1;
+    doc.line(lm, y, lm + pw, y);
+    y += 4;
+
+    // Totals
+    doc.setFontSize(7);
+    if (sale.discount_amount > 0) {
+      doc.text('Descuento:', lm, y);
+      doc.text(`-S/. ${formatNoRound(sale.discount_amount)}`, lm + pw, y, { align: 'right' });
+      y += 4;
+    }
+
+    if (isInvoice) {
+      const totalFinal = sale.total_amount;
+      const baseGravada = totalFinal / 1.18;
+      const igv = totalFinal - baseGravada;
+      doc.text('Base Gravada:', lm, y);
+      doc.text(`S/. ${formatNoRound(baseGravada)}`, lm + pw, y, { align: 'right' });
+      y += 3.5;
+      doc.text('IGV (18%):', lm, y);
+      doc.text(`S/. ${formatNoRound(igv)}`, lm + pw, y, { align: 'right' });
+      y += 3.5;
+    }
+
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'bold');
+    doc.text('TOTAL:', lm, y);
+    doc.text(`S/. ${formatNoRound(sale.total_amount)}`, lm + pw, y, { align: 'right' });
+    y += 6;
+
+    // Footer
+    doc.setFontSize(7);
+    doc.setFont(undefined, 'normal');
+    doc.text('¡Gracias por su compra!', 40, y, { align: 'center' });
+    y += 8;
+
+    // Resize page to actual content height
+    const pageHeight = y + 4;
+    doc.internal.pageSize.height = pageHeight;
+
+    return doc.output('blob');
+  };
+
+  const sendPdfViaWhatsApp = async (sale) => {
+    setSendingWhatsApp(true);
+    try {
+      const blob = await generatePdfBlob(sale);
+      const fileName = `comprobante_${sale.invoice_number.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+      const file = new File([blob], fileName, { type: 'application/pdf' });
+
+      // Intentar compartir el archivo PDF real de forma nativa (útil en móviles)
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: `Comprobante ${sale.invoice_number}`,
+            text: `Comprobante de pago ${sale.invoice_number} por S/. ${formatNoRound(sale.total_amount)}`
+          });
+          setSendingWhatsApp(false);
+          return;
+        } catch (shareErr) {
+          console.log('Navegación nativa cancelada o fallida, usando fallback de enlace.');
+        }
+      }
+
+      // Fallback: Subir a Supabase y compartir enlace en wa.me
+      const publicUrl = await DataService.uploadImage(file);
+
+      let cleanPhone = sale.customer_phone.replace(/[^0-9]/g, '');
+      if (cleanPhone.length === 9 && cleanPhone.startsWith('9')) {
+        cleanPhone = '51' + cleanPhone;
+      }
+
+      const storeName = config?.businessName || config?.storeName || 'CARRILLO STORE';
+      const text = `🧾 *${storeName}*\nComprobante: ${sale.document_type || 'Ticket'} N° ${sale.invoice_number}\nTotal: S/. ${formatNoRound(sale.total_amount)}\n\n📄 Descarga tu comprobante en PDF:\n${publicUrl}`;
+      const encodedMsg = encodeURIComponent(text);
+      window.open(`https://wa.me/${cleanPhone}?text=${encodedMsg}`, '_blank');
+    } catch (err) {
+      console.error('Error generando PDF para WhatsApp:', err);
+      setErrorMsg('No se pudo generar el PDF. Verifica la conexión.');
+      setTimeout(() => setErrorMsg(''), 3000);
+    } finally {
+      setSendingWhatsApp(false);
+    }
   };
 
   // Confirmar y Emitir Venta
@@ -951,6 +1222,17 @@ export default function POS() {
                         })()}
                       </div>
                     )}
+
+                    {paymentMethod === 'Tarjeta' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', backgroundColor: '#FEF3C7', border: '1px solid #F59E0B', color: '#92400E', fontSize: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                          <AlertTriangle size={14} />
+                          <span>Comisión de Tarjeta (5%): S/. {formatNoRound(total * 0.05)}</span>
+                        </div>
+                        <div>Monto total a pagar con recargo: <strong>S/. {formatNoRound(total * 1.05)}</strong></div>
+                        <div style={{ fontSize: '10px', fontStyle: 'italic', color: '#B45309' }}>(Nota: Esta comisión es referencial y no se guardará en la boleta/factura/ticket).</div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Columna Derecha: Resumen de Compra Detallado en Tabla */}
@@ -1418,10 +1700,12 @@ export default function POS() {
               padding: '24px 20px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', border: '1px dashed #ccc'
             }}>
               <div style={{ textAlign: 'center', marginBottom: '12px' }}>
-                <div style={{ fontSize: '16px', fontWeight: 700, letterSpacing: '0.05em' }}>CARRILLO STORE</div>
-                <div style={{ fontSize: '10px', color: '#666', marginTop: '2px' }}>Av. Larco 123, Miraflores</div>
-                <div style={{ fontSize: '10px', color: '#666' }}>Lima - Perú</div>
-                <div style={{ fontSize: '10px', color: '#666' }}>Tel: +51 987 654 321</div>
+                {config?.storeLogoUrl && (
+                  <img src={config.storeLogoUrl} alt="Logo" style={{ maxHeight: '60px', maxWidth: '120px', objectFit: 'contain', marginBottom: '8px' }} />
+                )}
+                <div style={{ fontSize: '16px', fontWeight: 700, letterSpacing: '0.05em' }}>{(config?.businessName || config?.storeName || 'CARRILLO STORE').toUpperCase()}</div>
+                <div style={{ fontSize: '10px', color: '#666', marginTop: '2px' }}>{config?.fiscalAddress || 'Av. Larco 123, Miraflores'}</div>
+                {config?.ticketPhone && <div style={{ fontSize: '10px', color: '#666' }}>Tel: {config.ticketPhone}</div>}
               </div>
               <div style={{ borderTop: '1px dashed #333', margin: '8px 0' }} />
               <div style={{ marginBottom: '8px' }}>
@@ -1482,19 +1766,17 @@ export default function POS() {
                 {/* WhatsApp Button - only if phone exists */}
                 {hasPhone && (
                   <button
-                    onClick={() => {
-                      const msg = generateWhatsAppMessage(lastCreatedSale);
-                      openWhatsApp(lastCreatedSale.customer_phone, msg);
-                    }}
+                    disabled={sendingWhatsApp}
+                    onClick={() => sendPdfViaWhatsApp(lastCreatedSale)}
                     style={{
                       width: '100%',
                       padding: '10px',
-                      backgroundColor: '#25D366',
+                      backgroundColor: sendingWhatsApp ? '#88d4a0' : '#25D366',
                       color: '#FFF',
                       border: 'none',
                       fontSize: '12px',
                       fontWeight: 600,
-                      cursor: 'pointer',
+                      cursor: sendingWhatsApp ? 'wait' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -1502,13 +1784,13 @@ export default function POS() {
                       borderRadius: '0px',
                       transition: 'background-color 0.15s'
                     }}
-                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#1EBE5A'}
-                    onMouseLeave={e => e.currentTarget.style.backgroundColor = '#25D366'}
+                    onMouseEnter={e => { if (!sendingWhatsApp) e.currentTarget.style.backgroundColor = '#1EBE5A'; }}
+                    onMouseLeave={e => { if (!sendingWhatsApp) e.currentTarget.style.backgroundColor = '#25D366'; }}
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
                       <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                     </svg>
-                    Enviar por WhatsApp
+                    {sendingWhatsApp ? 'Generando PDF...' : 'Enviar PDF por WhatsApp'}
                   </button>
                 )}
               </div>
@@ -1524,19 +1806,19 @@ export default function POS() {
         const isFactura = lastCreatedSale.document_type === 'Factura';
         const hasPhone = lastCreatedSale.customer_phone && lastCreatedSale.customer_phone.trim().length > 0;
 
-        const itemsWithTax = items.map(item => {
+         const itemsWithTax = items.map(item => {
           const precioVentaUnitario = item.unit_price;
-          const valorVentaUnitario = Math.trunc((precioVentaUnitario / 1.18) * 100) / 100;
-          const igvUnitario = Math.trunc((valorVentaUnitario * 0.18) * 100) / 100;
+          const valorVentaUnitario = precioVentaUnitario / 1.18;
+          const igvUnitario = precioVentaUnitario - valorVentaUnitario;
           const totalBase = valorVentaUnitario * item.quantity;
           const totalIgv = igvUnitario * item.quantity;
           return { ...item, valorVentaUnitario, igvUnitario, totalBase, totalIgv };
         });
 
-        const totalBaseGravada = itemsWithTax.reduce((sum, i) => sum + i.totalBase, 0);
-        const totalIGV = itemsWithTax.reduce((sum, i) => sum + i.totalIgv, 0);
+        const totalImporte = lastCreatedSale.total_amount;
+        const totalBaseGravada = totalImporte / 1.18;
+        const totalIGV = totalImporte - totalBaseGravada;
         const descuento = lastCreatedSale.discount_amount;
-        const totalImporte = totalBaseGravada + totalIGV - descuento;
 
         return (
           <div className="invoice-print-container" style={{
@@ -1553,14 +1835,21 @@ export default function POS() {
             }}>
               {/* CABECERA */}
               <div style={{ display: 'flex', gap: '20px', paddingBottom: '16px', borderBottom: '2px solid #1a1a2e', marginBottom: '16px' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '18px', fontWeight: 800, color: '#1a1a2e', letterSpacing: '0.03em' }}>CARRILLO STORE S.A.C.</div>
-                  <div style={{ fontSize: '11px', color: '#555', marginTop: '4px', lineHeight: 1.5 }}>
-                    Av. Larco 123, Miraflores<br />Lima - Lima - Perú<br />Tel: +51 987 654 321<br />Email: ventas@carrillostore.com
+                <div style={{ flex: 1, display: 'flex', gap: '14px', alignItems: 'center' }}>
+                  {config?.storeLogoUrl && (
+                    <img src={config.storeLogoUrl} alt="Logo" style={{ maxHeight: '60px', maxWidth: '120px', objectFit: 'contain' }} />
+                  )}
+                  <div>
+                    <div style={{ fontSize: '18px', fontWeight: 800, color: '#1a1a2e', letterSpacing: '0.03em' }}>{config?.businessName || config?.storeName || 'CARRILLO STORE S.A.C.'}</div>
+                    <div style={{ fontSize: '11px', color: '#555', marginTop: '4px', lineHeight: 1.5 }}>
+                      {config?.fiscalAddress || 'Av. Larco 123, Miraflores, Lima'}<br />
+                      {config?.ticketPhone && <>Tel: {config.ticketPhone}<br /></>}
+                      {config?.ticketEmail && <>Email: {config.ticketEmail}</>}
+                    </div>
                   </div>
                 </div>
                 <div style={{ border: '2px solid #c0392b', padding: '12px 16px', textAlign: 'center', minWidth: '200px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '4px' }}>
-                  <div style={{ fontSize: '10px', fontWeight: 600, color: '#c0392b', letterSpacing: '0.05em' }}>R.U.C. N° 20601234567</div>
+                  <div style={{ fontSize: '10px', fontWeight: 600, color: '#c0392b', letterSpacing: '0.05em' }}>R.U.C. N° {config?.ruc || '20601234567'}</div>
                   <div style={{ fontSize: '13px', fontWeight: 800, color: '#c0392b' }}>{isFactura ? 'FACTURA ELECTRÓNICA' : 'BOLETA DE VENTA ELECTRÓNICA'}</div>
                   <div style={{ fontSize: '15px', fontWeight: 800, color: '#c0392b' }}>N° {lastCreatedSale.invoice_number}</div>
                 </div>
@@ -1654,19 +1943,17 @@ export default function POS() {
                 {/* WhatsApp Button - only if phone exists */}
                 {hasPhone && (
                   <button
-                    onClick={() => {
-                      const msg = generateWhatsAppMessage(lastCreatedSale);
-                      openWhatsApp(lastCreatedSale.customer_phone, msg);
-                    }}
+                    disabled={sendingWhatsApp}
+                    onClick={() => sendPdfViaWhatsApp(lastCreatedSale)}
                     style={{
                       width: '100%',
                       padding: '12px',
-                      backgroundColor: '#25D366',
+                      backgroundColor: sendingWhatsApp ? '#88d4a0' : '#25D366',
                       color: '#FFF',
                       border: 'none',
                       fontSize: '13px',
                       fontWeight: 600,
-                      cursor: 'pointer',
+                      cursor: sendingWhatsApp ? 'wait' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -1674,13 +1961,13 @@ export default function POS() {
                       borderRadius: '0px',
                       transition: 'background-color 0.15s'
                     }}
-                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#1EBE5A'}
-                    onMouseLeave={e => e.currentTarget.style.backgroundColor = '#25D366'}
+                    onMouseEnter={e => { if (!sendingWhatsApp) e.currentTarget.style.backgroundColor = '#1EBE5A'; }}
+                    onMouseLeave={e => { if (!sendingWhatsApp) e.currentTarget.style.backgroundColor = '#25D366'; }}
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
                       <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                     </svg>
-                    Enviar Comprobante por WhatsApp
+                    {sendingWhatsApp ? 'Generando PDF...' : 'Enviar Comprobante PDF por WhatsApp'}
                   </button>
                 )}
               </div>

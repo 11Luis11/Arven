@@ -137,7 +137,19 @@ export default function ProductDetail({ onOpenCart }) {
     );
   }
 
-  const price = product.offer_price || product.price;
+  const sizePrices = (product.wholesale_tiers || []).find(t => t.type === 'size_prices')?.data || {};
+  const sizeData = sizePrices[selectedSize];
+  
+  const price = (sizeData?.offer_price && sizeData.offer_price !== '')
+    ? parseFloat(sizeData.offer_price)
+    : ((sizeData?.price && sizeData.price !== '')
+      ? parseFloat(sizeData.price)
+      : (product.offer_price || product.price));
+
+  const originalPrice = (sizeData?.offer_price && sizeData.offer_price !== '' && sizeData?.price && sizeData.price !== '')
+    ? parseFloat(sizeData.price)
+    : ((product.offer_price && (!sizeData?.price || sizeData.price === '')) ? product.price : null);
+
   const imageList = product.images && product.images.length > 0 ? product.images : [product.image_url];
 
   return (
@@ -167,57 +179,69 @@ export default function ProductDetail({ onOpenCart }) {
         marginBottom: '80px'
       }}>
         
-        {/* GALERÍA DE IMÁGENES + ZOOM HOVER */}
-        <div style={{ display: 'flex', gap: '16px', position: 'sticky', top: '90px', alignSelf: 'start' }}>
-          {/* Miniaturas */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {imageList.map((img, idx) => (
-              <button
-                key={idx}
-                onClick={() => setActiveImage(img)}
+        {/* COLUMNA IZQUIERDA: GALERÍA + DESCRIPCIÓN */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', position: 'sticky', top: '90px', alignSelf: 'start' }}>
+          
+          {/* GALERÍA DE IMÁGENES + ZOOM HOVER */}
+          <div style={{ display: 'flex', gap: '16px' }}>
+            {/* Miniaturas */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {imageList.map((img, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setActiveImage(img)}
+                  style={{
+                    width: '60px',
+                    height: '80px',
+                    border: activeImage === img ? '1.5px solid var(--text-primary)' : '1px solid var(--border-color)',
+                    backgroundColor: '#FFF',
+                    padding: '2px',
+                    cursor: 'pointer',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <img src={img} alt="Miniatura" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </button>
+              ))}
+            </div>
+
+            {/* Imagen Principal con Zoom */}
+            <div 
+              ref={imageContainerRef}
+              onMouseMove={handleMouseMove}
+              onMouseLeave={handleMouseLeave}
+              style={{
+                flex: 1,
+                border: '1px solid var(--border-color)',
+                backgroundColor: '#FFF',
+                overflow: 'hidden',
+                cursor: 'zoom-in',
+                position: 'relative',
+                height: '520px'
+              }}
+            >
+              <img 
+                ref={zoomImageRef}
+                src={activeImage} 
+                alt={product.name}
                 style={{
-                  width: '60px',
-                  height: '80px',
-                  border: activeImage === img ? '1.5px solid var(--text-primary)' : '1px solid var(--border-color)',
-                  backgroundColor: '#FFF',
-                  padding: '2px',
-                  cursor: 'pointer',
-                  overflow: 'hidden'
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  display: 'block',
+                  transition: 'transform 0.1s ease-out',
+                  willChange: 'transform'
                 }}
-              >
-                <img src={img} alt="Miniatura" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              </button>
-            ))}
+              />
+            </div>
           </div>
 
-          {/* Imagen Principal con Zoom */}
-          <div 
-            ref={imageContainerRef}
-            onMouseMove={handleMouseMove}
-            onMouseLeave={handleMouseLeave}
-            style={{
-              flex: 1,
-              border: '1px solid var(--border-color)',
-              backgroundColor: '#FFF',
-              overflow: 'hidden',
-              cursor: 'zoom-in',
-              position: 'relative',
-              height: '520px'
-            }}
-          >
-            <img 
-              ref={zoomImageRef}
-              src={activeImage} 
-              alt={product.name}
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                display: 'block',
-                transition: 'transform 0.1s ease-out',
-                willChange: 'transform'
-              }}
-            />
+          {/* Descripción debajo de la imagen */}
+          <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: 550, marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-primary)' }}>Descripción</h3>
+            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6, fontWeight: 300, whiteSpace: 'pre-wrap' }}>
+              {product.description}
+            </p>
           </div>
         </div>
 
@@ -235,19 +259,16 @@ export default function ProductDetail({ onOpenCart }) {
             <span style={{ fontSize: '24px', fontWeight: 600 }}>
               S/. {price.toFixed(2)}
             </span>
-            {product.offer_price && (
+            {originalPrice && (
               <span style={{ fontSize: '16px', textDecoration: 'line-through', color: 'var(--text-secondary)' }}>
-                S/. {product.price.toFixed(2)}
+                S/. {originalPrice.toFixed(2)}
               </span>
             )}
           </div>
           
           {(() => {
-            const tiers = product.wholesale_tiers && product.wholesale_tiers.length > 0
-              ? [...product.wholesale_tiers].sort((a, b) => a.min_qty - b.min_qty)
-              : product.wholesale_price
-                ? [{ min_qty: product.wholesale_min_qty || 6, price: product.wholesale_price }]
-                : [];
+            const selectedSizeData = sizePrices[selectedSize];
+            const tiers = selectedSizeData?.wholesale_tiers || [];
             if (tiers.length === 0) return null;
 
             return (
@@ -312,20 +333,41 @@ export default function ProductDetail({ onOpenCart }) {
                   letterSpacing: '0.04em'
                 }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', backgroundColor: '#6366F1', color: '#FFF', borderRadius: '50%', fontSize: '10px', fontWeight: 700 }}>%</span>
-                  PRECIOS AL POR MAYOR DISPONIBLES
+                  PRECIOS AL POR MAYOR DISPONIBLES EN TALLA {selectedSize}
                 </div>
               </div>
             );
           })()}
 
-          <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)' }} />
+          {(() => {
+            const simplePromos = (product.wholesale_tiers || []).find(t => t.type === 'simple_promos')?.data || [];
+            if (simplePromos.length === 0) return null;
 
-          <div>
-            <h3 style={{ fontSize: '14px', fontWeight: 500, marginBottom: '8px' }}>Descripción</h3>
-            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6, fontWeight: 300, whiteSpace: 'pre-wrap' }}>
-              {product.description}
-            </p>
-          </div>
+            return (
+              <div style={{
+                marginTop: '12px',
+                padding: '14px 16px',
+                backgroundColor: '#FFF0F3',
+                border: '1px solid #FFCCD5',
+                color: '#C9184A',
+                fontWeight: 600,
+                fontSize: '13px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px'
+              }}>
+                <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#FF4D6D', fontWeight: 700 }}>🔥 Promoción Especial</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {simplePromos.map((promo, idx) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Lleva {promo.qty} polos por solo:</span>
+                      <strong>S/. {parseFloat(promo.price).toFixed(2)}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Colores */}
           {product.colors && product.colors.length > 0 && (

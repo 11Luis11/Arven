@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Download, Printer, TrendingUp, DollarSign, ShoppingBag, Eye, AlertTriangle, FileText, CheckCircle, Receipt } from 'lucide-react';
 import { DataService, subscribeToRealtime } from '../../services/dataService';
 
@@ -14,6 +14,7 @@ export default function Reports() {
   const [sales, setSales] = useState([]);
   const [saleItems, setSaleItems] = useState([]);
   const [products, setProducts] = useState([]);
+  const [config, setConfig] = useState(null);
   
   // Períodos de filtro
   const [period, setPeriod] = useState('month'); // 'day', 'week', 'month', 'year'
@@ -24,15 +25,29 @@ export default function Reports() {
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [msg, setMsg] = useState('');
 
+  // Estados para cambios y devoluciones
+  const [exchangeSale, setExchangeSale] = useState(null);
+  const [exchangeItem, setExchangeItem] = useState(null);
+  const [exchangeQty, setExchangeQty] = useState(1);
+  const [replacementProductId, setReplacementProductId] = useState('');
+  const [replacementColorHex, setReplacementColorHex] = useState('');
+  const [replacementSize, setReplacementSize] = useState('');
+  const [exchangeLoading, setExchangeLoading] = useState(false);
+
   const loadData = async () => {
     const s = await DataService.getSales();
-    setSales(s);
+    const uniqueSales = Array.from(new Map(s.map(item => [item.id, item])).values());
+    setSales(uniqueSales);
 
     const items = await DataService.getSaleItems();
-    setSaleItems(items);
+    const uniqueItems = Array.from(new Map(items.map(item => [item.id, item])).values());
+    setSaleItems(uniqueItems);
 
     const prods = await DataService.getProducts();
     setProducts(prods);
+
+    const cfg = await DataService.getConfig();
+    setConfig(cfg);
   };
 
   useEffect(() => {
@@ -251,119 +266,427 @@ export default function Reports() {
                 ) : (
                   periodSales.map(s => {
                     const isVoided = s.status === 'voided';
+                    const isExchanged = s.status === 'exchanged';
                     const docType = s.document_type || 'Boleta';
                     const isTicket = docType === 'Sin Datos';
+
+                    const items = getItemsForSale(s.id);
+                    const selectedReplacementProduct = products.find(p => p.id === replacementProductId);
+                    const replacementColors = selectedReplacementProduct?.colors || [];
+                    const selectedRepColor = replacementColors.find(c => c.hex === replacementColorHex);
+                    const replacementSizes = selectedReplacementProduct?.sizes || [];
+
                     return (
-                      <tr key={s.id} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: isVoided ? '#FFF5F5' : 'transparent' }}>
-                        <td style={{ padding: '8px 12px', fontWeight: 500 }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <span>{s.invoice_number}</span>
-                            <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 400 }}>{docType}</span>
-                          </div>
-                        </td>
-                        <td style={{ padding: '8px 12px' }}>{s.customer_name}</td>
-                        <td style={{ padding: '8px 12px', fontSize: '12px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{s.operator || '—'}</span>
-                            <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{s.type === 'pos' ? 'POS' : 'Online'}</span>
-                          </div>
-                        </td>
-                        <td style={{ padding: '8px 12px', fontSize: '12px' }}>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '2px 7px',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            backgroundColor: s.payment_method === 'Efectivo' ? '#F0FFF4' : s.payment_method === 'Yape' || s.payment_method === 'Plin' ? '#EBF5FF' : '#FFF8E7',
-                            color: s.payment_method === 'Efectivo' ? '#276749' : s.payment_method === 'Yape' || s.payment_method === 'Plin' ? '#1a56db' : '#92400E',
-                            border: `1px solid ${s.payment_method === 'Efectivo' ? '#9AE6B4' : s.payment_method === 'Yape' || s.payment_method === 'Plin' ? '#BFDBFE' : '#FCD34D'}`
-                          }}>
-                            {s.payment_method || '—'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '8px 12px', fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                            <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{new Date(s.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
-                            <span>{new Date(s.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
-                          </div>
-                        </td>
-                        <td style={{ padding: '8px 12px', fontWeight: 600 }}>S/. {formatNoRound(s.total_amount)}</td>
-                        <td style={{ padding: '8px 12px' }}>
-                          <span style={{
-                            fontSize: '10px',
-                            fontWeight: 600,
-                            padding: '2px 6px',
-                            backgroundColor: isVoided ? '#FDE8E8' : '#DEF7EC',
-                            color: isVoided ? '#9B1C1C' : '#03543F'
-                          }}>
-                            {isVoided ? 'ANULADA' : 'EMITIDA'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>
-                          <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                            {/* Mostrar solo el comprobante que corresponde */}
-                            {isTicket ? (
-                              <button 
-                                onClick={() => openTicket(s)}
-                                style={{ 
-                                  background: 'none', 
-                                  border: '1px solid var(--border-color)', 
-                                  cursor: 'pointer', 
-                                  color: '#555',
-                                  display: 'inline-flex', 
-                                  alignItems: 'center', 
-                                  gap: '3px',
-                                  padding: '3px 8px',
-                                  fontSize: '11px',
-                                  fontWeight: 500,
-                                  backgroundColor: '#F9F9F9'
-                                }}
-                                title="Ver Ticket"
-                              >
-                                <Receipt size={12} /> Ticket
-                              </button>
-                            ) : (
-                              <button 
-                                onClick={() => openInvoice(s)}
-                                style={{ 
-                                  background: 'none', 
-                                  border: '1px solid #1a56db', 
-                                  cursor: 'pointer', 
-                                  color: '#1a56db',
-                                  display: 'inline-flex', 
-                                  alignItems: 'center', 
-                                  gap: '3px',
-                                  padding: '3px 8px',
-                                  fontSize: '11px',
-                                  fontWeight: 600,
-                                  backgroundColor: '#EBF5FF'
-                                }}
-                                title={`Ver ${docType} SUNAT`}
-                              >
-                                <FileText size={12} /> {docType}
-                              </button>
-                            )}
-                            {!isVoided && (
-                              <button 
-                                onClick={() => handleVoidSale(s.id)}
-                                style={{ 
-                                  background: 'none', 
-                                  border: '1px solid #e02424', 
-                                  cursor: 'pointer', 
-                                  color: '#e02424',
-                                  padding: '3px 8px',
-                                  fontSize: '11px',
-                                  fontWeight: 500,
-                                  backgroundColor: '#FFF5F5'
-                                }}
-                                title="Anular venta y reponer stock"
-                              >
-                                Anular
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
+                      <React.Fragment key={s.id}>
+                        <tr style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: isVoided ? '#FFF5F5' : isExchanged ? '#F9F5FF' : 'transparent' }}>
+                          <td style={{ padding: '8px 12px', fontWeight: 500 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                              <span>{s.invoice_number}</span>
+                              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 400 }}>{docType}</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '8px 12px' }}>{s.customer_name}</td>
+                          <td style={{ padding: '8px 12px', fontSize: '12px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{s.operator || '—'}</span>
+                              <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{s.type === 'pos' ? 'POS' : 'Online'}</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '8px 12px', fontSize: '12px' }}>
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '2px 7px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              backgroundColor: s.payment_method === 'Efectivo' ? '#F0FFF4' : s.payment_method === 'Yape' || s.payment_method === 'Plin' ? '#EBF5FF' : '#FFF8E7',
+                              color: s.payment_method === 'Efectivo' ? '#276749' : s.payment_method === 'Yape' || s.payment_method === 'Plin' ? '#1a56db' : '#92400E',
+                              border: `1px solid ${s.payment_method === 'Efectivo' ? '#9AE6B4' : s.payment_method === 'Yape' || s.payment_method === 'Plin' ? '#BFDBFE' : '#FCD34D'}`
+                            }}>
+                              {s.payment_method || '—'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '8px 12px', fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                              <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{new Date(s.created_at).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                              <span>{new Date(s.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '8px 12px', fontWeight: 600 }}>S/. {formatNoRound(s.total_amount)}</td>
+                          <td style={{ padding: '8px 12px' }}>
+                            <span style={{
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              padding: '2px 6px',
+                              backgroundColor: isVoided ? '#FDE8E8' : isExchanged ? '#F5F3FF' : '#DEF7EC',
+                              color: isVoided ? '#9B1C1C' : isExchanged ? '#7C3AED' : '#03543F'
+                            }}>
+                              {isVoided ? 'ANULADA' : isExchanged ? 'CAMBIADA' : 'EMITIDA'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                              {isTicket ? (
+                                <button 
+                                  onClick={() => openTicket(s)}
+                                  style={{ 
+                                    background: 'none', 
+                                    border: '1px solid var(--border-color)', 
+                                    cursor: 'pointer', 
+                                    color: '#555',
+                                    display: 'inline-flex', 
+                                    alignItems: 'center', 
+                                    gap: '3px',
+                                    padding: '3px 8px',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    backgroundColor: '#F3F4F6'
+                                  }}
+                                  title="Imprimir Ticket"
+                                >
+                                  <Receipt size={12} /> Ticket
+                                </button>
+                              ) : (
+                                <button 
+                                  onClick={() => openInvoice(s)}
+                                  style={{ 
+                                    background: 'none', 
+                                    border: '1px solid #1a56db', 
+                                    cursor: 'pointer', 
+                                    color: '#1a56db',
+                                    display: 'inline-flex', 
+                                    alignItems: 'center', 
+                                    gap: '3px',
+                                    padding: '3px 8px',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    backgroundColor: '#EBF5FF'
+                                  }}
+                                  title={`Ver ${docType} SUNAT`}
+                                >
+                                  <FileText size={12} /> {docType}
+                                </button>
+                              )}
+                              {!isVoided && (
+                                <>
+                                  <button 
+                                    onClick={() => {
+                                      if (exchangeSale?.id === s.id) {
+                                        setExchangeSale(null);
+                                      } else {
+                                        setExchangeSale(s);
+                                        setExchangeItem(null);
+                                        setExchangeQty(1);
+                                        setReplacementProductId('');
+                                        setReplacementColorHex('');
+                                        setReplacementSize('');
+                                      }
+                                    }}
+                                    style={{ 
+                                      background: 'none', 
+                                      border: '1px solid #7C3AED', 
+                                      cursor: 'pointer', 
+                                      color: exchangeSale?.id === s.id ? '#FFF' : '#7C3AED',
+                                      padding: '3px 8px',
+                                      fontSize: '11px',
+                                      fontWeight: 500,
+                                      backgroundColor: exchangeSale?.id === s.id ? '#7C3AED' : '#F5F3FF'
+                                    }}
+                                    title="Cambio de producto"
+                                  >
+                                    {exchangeSale?.id === s.id ? 'Cerrar' : 'Cambio'}
+                                  </button>
+                                  <button 
+                                    onClick={() => handleVoidSale(s.id)}
+                                    style={{ 
+                                      background: 'none', 
+                                      border: '1px solid #e02424', 
+                                      cursor: 'pointer', 
+                                      color: '#e02424',
+                                      padding: '3px 8px',
+                                      fontSize: '11px',
+                                      fontWeight: 500,
+                                      backgroundColor: '#FFF5F5'
+                                    }}
+                                    title="Anular venta y reponer stock"
+                                  >
+                                    Anular
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {exchangeSale?.id === s.id && (
+                          <tr key={`${s.id}-exchange`}>
+                            <td colSpan={8} style={{ padding: '24px', backgroundColor: '#F9F5FF', borderBottom: '2px solid #7C3AED' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '650px' }}>
+                                <div>
+                                  <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#7C3AED', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    ↻ CAMBIAR PRENDAS DE ESTA VENTA
+                                  </h4>
+                                  <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                    Selecciona una de las prendas vendidas, ingresa la cantidad a cambiar, y elige su reemplazo. El inventario y el total del comprobante se recalcularán automáticamente.
+                                  </p>
+                                </div>
+
+                                {/* Paso 1: Seleccionar item a cambiar */}
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                                    1. Selecciona el producto a devolver:
+                                  </label>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    {items.map(item => {
+                                      const isExchangedItem = item.product_name.includes('[CAMBIO]') || item.product_name.includes('CAMBIO');
+                                      return (
+                                        <button
+                                          key={item.id}
+                                          type="button"
+                                          onClick={() => {
+                                            setExchangeItem(item);
+                                            setExchangeQty(1);
+                                          }}
+                                          style={{
+                                            padding: '12px 14px',
+                                            border: exchangeItem?.id === item.id ? '2px solid #7C3AED' : '1px solid var(--border-color)',
+                                            backgroundColor: exchangeItem?.id === item.id ? '#FFF' : '#F9FAFB',
+                                            borderRadius: '6px',
+                                            cursor: 'pointer',
+                                            textAlign: 'left',
+                                            fontSize: '13px',
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            boxShadow: exchangeItem?.id === item.id ? '0 4px 12px rgba(124, 58, 237, 0.08)' : 'none',
+                                            position: 'relative'
+                                          }}
+                                        >
+                                          <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                                            {item.quantity}x {item.product_name}
+                                            {isExchangedItem && (
+                                              <span style={{ marginLeft: '8px', fontSize: '10px', backgroundColor: '#EDE9FE', color: '#7C3AED', padding: '2px 6px', borderRadius: '12px', fontWeight: 600 }}>
+                                                CAMBIADO
+                                              </span>
+                                            )}
+                                          </span>
+                                          <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>S/. {formatNoRound(item.unit_price)} c/u</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+
+                                {exchangeItem && (
+                                  <>
+                                    {/* Paso 1.5: Cantidad a cambiar */}
+                                    {exchangeItem.quantity > 1 && (
+                                      <div>
+                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                                          Cantidad a cambiar (Max {exchangeItem.quantity}):
+                                        </label>
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          max={exchangeItem.quantity}
+                                          value={exchangeQty}
+                                          onChange={e => {
+                                            const val = Math.max(1, Math.min(exchangeItem.quantity, parseInt(e.target.value) || 1));
+                                            setExchangeQty(val);
+                                          }}
+                                          style={{
+                                            padding: '8px 12px',
+                                            border: '1px solid var(--border-color)',
+                                            borderRadius: '6px',
+                                            width: '100px',
+                                            fontSize: '13px'
+                                          }}
+                                        />
+                                      </div>
+                                    )}
+
+                                    {/* Paso 2: Seleccionar nuevo producto */}
+                                    <div>
+                                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                                        2. Selecciona el nuevo producto:
+                                      </label>
+                                      <select
+                                        value={replacementProductId}
+                                        onChange={e => { setReplacementProductId(e.target.value); setReplacementColorHex(''); setReplacementSize(''); }}
+                                        style={{ width: '100%', padding: '10px 12px', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '13px', backgroundColor: '#FFF' }}
+                                      >
+                                        <option value="">— Seleccionar producto —</option>
+                                        {products.filter(p => p.active && p.stock > 0).map(p => (
+                                          <option key={p.id} value={p.id}>{p.name} (Stock: {p.stock})</option>
+                                        ))}
+                                      </select>
+                                    </div>
+
+                                    {/* Paso 3: Color */}
+                                    {replacementColors.length > 0 && (
+                                      <div>
+                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                                          3. Selecciona el color:
+                                        </label>
+                                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                          {replacementColors.map(c => (
+                                            <button
+                                              key={c.hex}
+                                              type="button"
+                                              onClick={() => setReplacementColorHex(c.hex)}
+                                              title={c.name}
+                                              style={{
+                                                width: '34px', height: '34px', borderRadius: '50%',
+                                                backgroundColor: c.hex,
+                                                border: replacementColorHex === c.hex ? '3px solid #7C3AED' : '1px solid var(--border-color)',
+                                                cursor: 'pointer',
+                                                boxShadow: replacementColorHex === c.hex ? '0 0 0 2px #FFF, 0 0 0 4px #7C3AED' : 'none'
+                                              }}
+                                            />
+                                          ))}
+                                        </div>
+                                        {selectedRepColor && <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>{selectedRepColor.name} — Stock: {selectedRepColor.stock || 0}</p>}
+                                      </div>
+                                    )}
+
+                                    {/* Paso 4: Talla */}
+                                    {replacementSizes.length > 0 && (
+                                      <div>
+                                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                                          4. Selecciona la talla:
+                                        </label>
+                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                          {replacementSizes.map(s => {
+                                            const sizeStock = selectedRepColor?.sizes_stock?.[s] ?? '?';
+                                            return (
+                                              <button
+                                                key={s}
+                                                type="button"
+                                                onClick={() => setReplacementSize(s)}
+                                                style={{
+                                                  padding: '6px 14px', fontSize: '12px', fontWeight: 600,
+                                                  border: replacementSize === s ? '2px solid #7C3AED' : '1px solid var(--border-color)',
+                                                  backgroundColor: replacementSize === s ? '#7C3AED' : '#FFF',
+                                                  color: replacementSize === s ? '#FFF' : 'var(--text-secondary)',
+                                                  cursor: 'pointer',
+                                                  borderRadius: '4px'
+                                                }}
+                                              >
+                                                {s} ({sizeStock})
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Diferencia de Precio */}
+                                    {replacementSize && (() => {
+                                      const repSizePrices = (selectedReplacementProduct?.wholesale_tiers || []).find(t => t.type === 'size_prices')?.data || {};
+                                      const repSizeData = repSizePrices[replacementSize] || {};
+                                      const repRegularPrice = (repSizeData.price && repSizeData.price !== '')
+                                        ? parseFloat(repSizeData.price)
+                                        : (selectedReplacementProduct ? (selectedReplacementProduct.offer_price !== null ? parseFloat(selectedReplacementProduct.offer_price) : parseFloat(selectedReplacementProduct.price)) : 0);
+                                      
+                                      const repActivePrice = (repSizeData.offer_price && repSizeData.offer_price !== '')
+                                        ? parseFloat(repSizeData.offer_price)
+                                        : repRegularPrice;
+
+                                      const originalUnitPrice = parseFloat(exchangeItem.unit_price) || 0;
+                                      const diffAmountUnit = repActivePrice - originalUnitPrice;
+                                      const diffAmountTotal = diffAmountUnit * exchangeQty;
+
+                                      return (
+                                        <div style={{
+                                          padding: '14px',
+                                          backgroundColor: diffAmountTotal > 0 ? '#FFFBEB' : diffAmountTotal < 0 ? '#ECFDF5' : '#F9FAFB',
+                                          border: '1px solid',
+                                          borderRadius: '6px',
+                                          borderColor: diffAmountTotal > 0 ? '#FBBF24' : diffAmountTotal < 0 ? '#34D399' : '#E5E7EB',
+                                          marginTop: '16px',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          gap: '4px'
+                                        }}>
+                                          <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cálculo de Diferencia ({exchangeQty} uds):</span>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-primary)' }}>
+                                            <span>Precio unitario devuelto:</span>
+                                            <strong>S/. {originalUnitPrice.toFixed(2)}</strong>
+                                          </div>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-primary)' }}>
+                                            <span>Precio unitario nuevo:</span>
+                                            <strong>S/. {repActivePrice.toFixed(2)}</strong>
+                                          </div>
+                                          <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)', margin: '6px 0' }} />
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 700, color: diffAmountTotal > 0 ? '#B45309' : diffAmountTotal < 0 ? '#047857' : 'var(--text-primary)' }}>
+                                            <span>{diffAmountTotal > 0 ? 'DIFERENCIA A COBRAR:' : diffAmountTotal < 0 ? 'DIFERENCIA A DEVOLVER:' : 'SIN DIFERENCIA:'}</span>
+                                            <span>S/. {Math.abs(diffAmountTotal).toFixed(2)}</span>
+                                          </div>
+                                        </div>
+                                      );
+                                    })()}
+
+                                    {/* Botones de acción */}
+                                    <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                                      <button
+                                        disabled={exchangeLoading || !replacementProductId || (replacementColors.length > 0 && !replacementColorHex) || (replacementSizes.length > 0 && !replacementSize)}
+                                        onClick={async () => {
+                                          setExchangeLoading(true);
+                                          try {
+                                            const colorName = selectedRepColor?.name || '';
+                                            await DataService.exchangeProduct(
+                                              s.id,
+                                              exchangeItem.id,
+                                              replacementProductId,
+                                              replacementColorHex || null,
+                                              colorName || null,
+                                              replacementSize || null,
+                                              currentUser.name,
+                                              exchangeQty
+                                            );
+                                            setMsg('✅ Cambio de producto realizado con éxito.');
+                                            setTimeout(() => setMsg(''), 4000);
+                                            setExchangeSale(null);
+                                            loadData();
+                                          } catch (err) {
+                                            alert('Error al realizar el cambio: ' + (err.message || ''));
+                                          } finally {
+                                            setExchangeLoading(false);
+                                          }
+                                        }}
+                                        style={{
+                                          padding: '10px 20px',
+                                          backgroundColor: '#7C3AED',
+                                          color: '#FFF',
+                                          border: 'none',
+                                          borderRadius: '6px',
+                                          cursor: exchangeLoading ? 'wait' : 'pointer',
+                                          fontSize: '13px',
+                                          fontWeight: 600,
+                                          opacity: (exchangeLoading || !replacementProductId || (replacementColors.length > 0 && !replacementColorHex) || (replacementSizes.length > 0 && !replacementSize)) ? 0.5 : 1
+                                        }}
+                                      >
+                                        {exchangeLoading ? 'Procesando...' : 'Confirmar Cambio'}
+                                      </button>
+                                      <button
+                                        onClick={() => setExchangeSale(null)}
+                                        style={{
+                                          padding: '10px 20px',
+                                          border: '1px solid var(--border-color)',
+                                          backgroundColor: '#FFF',
+                                          borderRadius: '6px',
+                                          cursor: 'pointer',
+                                          fontSize: '13px'
+                                        }}
+                                      >
+                                        Cancelar
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })
                 )}
@@ -425,10 +748,12 @@ export default function Reports() {
             }}>
               {/* Cabecera Ticket */}
               <div style={{ textAlign: 'center', marginBottom: '12px' }}>
-                <div style={{ fontSize: '16px', fontWeight: 700, letterSpacing: '0.05em' }}>CARRILLO STORE</div>
-                <div style={{ fontSize: '10px', color: '#666', marginTop: '2px' }}>Av. Larco 123, Miraflores</div>
-                <div style={{ fontSize: '10px', color: '#666' }}>Lima - Perú</div>
-                <div style={{ fontSize: '10px', color: '#666' }}>Tel: +51 987 654 321</div>
+                {config?.storeLogoUrl && (
+                  <img src={config.storeLogoUrl} alt="Logo" style={{ maxHeight: '60px', maxWidth: '120px', objectFit: 'contain', marginBottom: '8px' }} />
+                )}
+                <div style={{ fontSize: '16px', fontWeight: 700, letterSpacing: '0.05em' }}>{(config?.businessName || config?.storeName || 'CARRILLO STORE').toUpperCase()}</div>
+                <div style={{ fontSize: '10px', color: '#666', marginTop: '2px' }}>{config?.fiscalAddress || 'Av. Larco 123, Miraflores'}</div>
+                {config?.ticketPhone && <div style={{ fontSize: '10px', color: '#666' }}>Tel: {config.ticketPhone}</div>}
               </div>
 
               {/* Línea divisoria */}
@@ -472,14 +797,17 @@ export default function Reports() {
               <div style={{ borderTop: '1px solid #ddd', margin: '2px 0 4px 0' }} />
 
               {/* Items del ticket */}
-              {items.map(item => (
-                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '11px' }}>
-                  <span style={{ flex: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.product_name}</span>
-                  <span style={{ flex: 0.5, textAlign: 'center' }}>{item.quantity}</span>
-                  <span style={{ flex: 1, textAlign: 'right' }}>{formatNoRound(item.unit_price)}</span>
-                  <span style={{ flex: 1, textAlign: 'right' }}>{formatNoRound(item.total_price)}</span>
-                </div>
-              ))}
+              {items.map(item => {
+                const isExchangedItem = item.product_name.includes('[CAMBIO]') || item.product_name.includes('CAMBIO');
+                return (
+                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '11px', color: isExchangedItem ? '#7C3AED' : 'inherit', fontWeight: isExchangedItem ? 700 : 400 }}>
+                    <span style={{ flex: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.product_name}</span>
+                    <span style={{ flex: 0.5, textAlign: 'center' }}>{item.quantity}</span>
+                    <span style={{ flex: 1, textAlign: 'right' }}>{formatNoRound(item.unit_price)}</span>
+                    <span style={{ flex: 1, textAlign: 'right' }}>{formatNoRound(item.total_price)}</span>
+                  </div>
+                );
+              })}
 
               {/* Línea divisoria */}
               <div style={{ borderTop: '1px dashed #333', margin: '8px 0' }} />
@@ -522,6 +850,11 @@ export default function Reports() {
                   *** ANULADO ***
                 </div>
               )}
+              {selectedSale.status === 'exchanged' && (
+                <div style={{ textAlign: 'center', fontWeight: 700, color: '#7C3AED', fontSize: '14px', border: '2px solid #7C3AED', padding: '6px', margin: '8px 0' }}>
+                  *** CAMBIADO ***
+                </div>
+              )}
 
               {/* Botones de acción */}
               <div style={{ display: 'flex', gap: '8px', marginTop: '16px', fontFamily: 'inherit' }}>
@@ -562,14 +895,12 @@ export default function Reports() {
 
         const itemsWithTax = items.map(item => {
           const precioVentaUnitario = item.unit_price;
-          // Base sin IGV (truncada a 2 decimales)
-          const valorVentaUnitario = Math.trunc((precioVentaUnitario / 1.18) * 100) / 100;
-          // IGV unitario = exactamente el 18% del valor unitario truncado (también truncado a 2 decimales)
-          const igvUnitario = Math.trunc((valorVentaUnitario * 0.18) * 100) / 100;
+          const valorVentaUnitario = precioVentaUnitario / 1.18;
+          const igvUnitario = precioVentaUnitario - valorVentaUnitario;
           
           const totalBase = valorVentaUnitario * item.quantity;
           const totalIgv = igvUnitario * item.quantity;
-          const totalConIgv = totalBase + totalIgv;
+          const totalConIgv = precioVentaUnitario * item.quantity;
 
           const prod = products.find(p => p.id === item.product_id);
           const sku = prod ? prod.sku : 'N/A';
@@ -585,10 +916,10 @@ export default function Reports() {
           };
         });
 
-        const totalBaseGravada = itemsWithTax.reduce((sum, i) => sum + i.totalBase, 0);
-        const totalIGV = itemsWithTax.reduce((sum, i) => sum + i.totalIgv, 0);
+        const totalImporte = selectedSale.total_amount;
+        const totalBaseGravada = totalImporte / 1.18;
+        const totalIGV = totalImporte - totalBaseGravada;
         const descuento = selectedSale.discount_amount;
-        const totalImporte = totalBaseGravada + totalIGV - descuento;
 
         return (
           <div className="invoice-print-container" style={{
@@ -625,15 +956,19 @@ export default function Reports() {
                 marginBottom: '16px'
               }}>
                 {/* Logo / Nombre Empresa */}
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '18px', fontWeight: 800, color: '#1a1a2e', letterSpacing: '0.03em' }}>
-                    CARRILLO STORE S.A.C.
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#555', marginTop: '4px', lineHeight: 1.5 }}>
-                    Av. Larco 123, Miraflores<br />
-                    Lima - Lima - Perú<br />
-                    Tel: +51 987 654 321<br />
-                    Email: ventas@carrillostore.com
+                <div style={{ flex: 1, display: 'flex', gap: '14px', alignItems: 'center' }}>
+                  {config?.storeLogoUrl && (
+                    <img src={config.storeLogoUrl} alt="Logo" style={{ maxHeight: '60px', maxWidth: '120px', objectFit: 'contain' }} />
+                  )}
+                  <div>
+                    <div style={{ fontSize: '18px', fontWeight: 800, color: '#1a1a2e', letterSpacing: '0.03em' }}>
+                      {config?.businessName || config?.storeName || 'CARRILLO STORE S.A.C.'}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#555', marginTop: '4px', lineHeight: 1.5 }}>
+                      {config?.fiscalAddress || 'Av. Larco 123, Miraflores, Lima'}<br />
+                      {config?.ticketPhone && <>Tel: {config.ticketPhone}<br /></>}
+                      {config?.ticketEmail && <>Email: {config.ticketEmail}</>}
+                    </div>
                   </div>
                 </div>
 
@@ -649,7 +984,7 @@ export default function Reports() {
                   gap: '4px'
                 }}>
                   <div style={{ fontSize: '10px', fontWeight: 600, color: '#c0392b', letterSpacing: '0.05em' }}>
-                    R.U.C. N° 20601234567
+                    R.U.C. N° {config?.ruc || '20601234567'}
                   </div>
                   <div style={{ fontSize: '13px', fontWeight: 800, color: '#c0392b' }}>
                     {selectedSale.invoice_number.startsWith('FFF1') ? 'FACTURA ELECTRÓNICA' : 'BOLETA DE VENTA ELECTRÓNICA'}
@@ -691,15 +1026,20 @@ export default function Reports() {
                   </tr>
                 </thead>
                 <tbody>
-                  {itemsWithTax.map((item, idx) => (
-                    <tr key={item.id} style={{ borderBottom: '1px solid #eee', backgroundColor: idx % 2 === 0 ? '#FFF' : '#F9F9FB' }}>
-                      <td style={{ padding: '8px 6px' }}>{item.quantity}</td>
-                      <td style={{ padding: '8px 6px' }}>NIU</td>
-                      <td style={{ padding: '8px 6px' }}>{item.sku}</td>
-                      <td style={{ padding: '8px 6px' }}>{item.product_name}</td>
-                      <td style={{ padding: '8px 6px', textAlign: 'right' }}>S/. {formatNoRound(item.valorVentaUnitario)}</td>
-                    </tr>
-                  ))}
+                  {itemsWithTax.map((item, idx) => {
+                    const isExchangedItem = item.product_name.includes('[CAMBIO]') || item.product_name.includes('CAMBIO');
+                    return (
+                      <tr key={item.id} style={{ borderBottom: '1px solid #eee', backgroundColor: isExchangedItem ? '#F5F3FF' : (idx % 2 === 0 ? '#FFF' : '#F9F9FB') }}>
+                        <td style={{ padding: '8px 6px' }}>{item.quantity}</td>
+                        <td style={{ padding: '8px 6px' }}>NIU</td>
+                        <td style={{ padding: '8px 6px' }}>{item.sku}</td>
+                        <td style={{ padding: '8px 6px', fontWeight: isExchangedItem ? 'bold' : 'normal', color: isExchangedItem ? '#7C3AED' : 'inherit' }}>
+                          {item.product_name}
+                        </td>
+                        <td style={{ padding: '8px 6px', textAlign: 'right' }}>S/. {formatNoRound(item.valorVentaUnitario)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
 
@@ -740,13 +1080,13 @@ export default function Reports() {
                 textAlign: 'center', 
                 padding: '8px',
                 marginBottom: '12px',
-                border: `2px solid ${selectedSale.status === 'voided' ? '#e02424' : '#059669'}`,
-                color: selectedSale.status === 'voided' ? '#e02424' : '#059669',
+                border: `2px solid ${selectedSale.status === 'voided' ? '#e02424' : selectedSale.status === 'exchanged' ? '#7C3AED' : '#059669'}`,
+                color: selectedSale.status === 'voided' ? '#e02424' : selectedSale.status === 'exchanged' ? '#7C3AED' : '#059669',
                 fontWeight: 700,
                 fontSize: '13px',
                 letterSpacing: '0.05em'
               }}>
-                {selectedSale.status === 'voided' ? '✗ COMPROBANTE ANULADO' : '✓ ACEPTADA POR SUNAT'}
+                {selectedSale.status === 'voided' ? '✗ COMPROBANTE ANULADO' : selectedSale.status === 'exchanged' ? '↻ COMPROBANTE CON CAMBIO' : '✓ ACEPTADA POR SUNAT'}
               </div>
 
               {/* === QR + Pie legal === */}
@@ -820,6 +1160,9 @@ export default function Reports() {
           }
         }
       `}</style>
+
+
+
 
     </div>
   );

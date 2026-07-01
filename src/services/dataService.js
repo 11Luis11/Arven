@@ -600,6 +600,152 @@ export const DataService = {
     return { ...sale, status: 'voided' };
   },
 
+  async exchangeProduct(saleId, itemId, newProductId, newColorHex, newColorName, newSize, operator = 'Administrador', exchangeQty = 1) {
+    if (supabase) {
+      try {
+        // 1. Obtener el item de venta actual
+        const { data: item, error: itemErr } = await supabase.from('sale_items').select('*').eq('id', itemId).single();
+        if (itemErr || !item) throw new Error('No se encontró el item de la venta.');
+
+        const qtyToExchange = Math.min(item.quantity, parseInt(exchangeQty) || 1);
+
+        // 2. Obtener el producto viejo para aumentar su stock por qtyToExchange
+        const { data: oldProd, error: oldProdErr } = await supabase.from('products').select('*').eq('id', item.product_id).single();
+        if (!oldProdErr && oldProd) {
+          const updates = { stock: oldProd.stock + qtyToExchange };
+          if (item.color_hex && Array.isArray(oldProd.colors)) {
+            updates.colors = oldProd.colors.map(c => {
+              if (c.hex && item.color_hex && c.hex.toLowerCase() === item.color_hex.toLowerCase()) {
+                const currentStock = c.stock || 0;
+                const newColorStock = currentStock + qtyToExchange;
+                if (item.selected_size && c.sizes_stock) {
+                  const newSizesStock = { ...c.sizes_stock };
+                  newSizesStock[item.selected_size] = (newSizesStock[item.selected_size] || 0) + qtyToExchange;
+                  return { ...c, stock: newColorStock, sizes_stock: newSizesStock };
+                }
+                return { ...c, stock: newColorStock };
+              }
+              return c;
+            });
+          }
+          await supabase.from('products').update(updates).eq('id', item.product_id);
+        }
+
+        // 3. Obtener el producto nuevo para reducir su stock por qtyToExchange
+        const { data: newProd, error: newProdErr } = await supabase.from('products').select('*').eq('id', newProductId).single();
+        if (newProdErr || !newProd) throw new Error('No se encontró el producto nuevo para el cambio.');
+
+        const updatesNew = { stock: Math.max(0, newProd.stock - qtyToExchange) };
+        if (newColorHex && Array.isArray(newProd.colors)) {
+          updatesNew.colors = newProd.colors.map(c => {
+            if (c.hex && newColorHex && c.hex.toLowerCase() === newColorHex.toLowerCase()) {
+              const currentStock = c.stock || 0;
+              const newColorStock = Math.max(0, currentStock - qtyToExchange);
+              if (newSize && c.sizes_stock) {
+                const newSizesStock = { ...c.sizes_stock };
+                newSizesStock[newSize] = Math.max(0, (newSizesStock[newSize] || 0) - qtyToExchange);
+                return { ...c, stock: newColorStock, sizes_stock: newSizesStock };
+              }
+              return { ...c, stock: newColorStock };
+            }
+            return c;
+          });
+        }
+        await supabase.from('products').update(updatesNew).eq('id', newProductId);
+
+        // 3b. Obtener el precio del nuevo producto para la talla seleccionada
+        const newSizePrices = (newProd.wholesale_tiers || []).find(t => t.type === 'size_prices')?.data || {};
+        const newSizeData = newSizePrices[newSize] || {};
+        const newRegularPrice = (newSizeData.price && newSizeData.price !== '')
+          ? parseFloat(newSizeData.price)
+          : (newProd.offer_price !== null ? parseFloat(newProd.offer_price) : parseFloat(newProd.price));
+
+        const newActivePrice = (newSizeData.offer_price && newSizeData.offer_price !== '')
+          ? parseFloat(newSizeData.offer_price)
+          : newRegularPrice;
+
+        // Calcular la diferencia de precio TOTAL para el cambio
+        const originalUnitPrice = parseFloat(item.unit_price) || 0;
+        const priceDiff = (newActivePrice - originalUnitPrice) * qtyToExchange;
+
+        // 4. Actualizar el registro del item en la venta (sale_items)
+        if (item.quantity > qtyToExchange) {
+          // Decrementar la cantidad del item original
+          await supabase.from('sale_items').update({
+            quantity: item.quantity - qtyToExchange,
+            total_price: (item.quantity - qtyToExchange) * originalUnitPrice
+          }).eq('id', itemId);
+
+          // Crear un nuevo registro para la prenda cambiada (con cantidad = qtyToExchange y el precio de la nueva prenda)
+          const newItemId = 'item-' + Math.random().toString(36).substr(2, 9);
+          const newItemPayload = {
+            id: newItemId,
+            sale_id: saleId,
+            product_id: newProductId,
+            product_name: `${newProd.name} (${newColorName || 'Sin Color'}, ${newSize || 'Sin Talla'}) [CAMBIO]`,
+            quantity: qtyToExchange,
+            unit_price: newActivePrice,
+            total_price: newActivePrice * qtyToExchange,
+            color_hex: newColorHex || null,
+            selected_size: newSize || null
+          };
+          await supabase.from('sale_items').insert(newItemPayload);
+        } else {
+          // Si cambiamos toda la cantidad, actualizamos la fila existente
+          const updatedItem = {
+            product_id: newProductId,
+            product_name: `${newProd.name} (${newColorName || 'Sin Color'}, ${newSize || 'Sin Talla'}) [CAMBIO]`,
+            selected_size: newSize || null,
+            color_hex: newColorHex || null,
+            unit_price: newActivePrice,
+            total_price: newActivePrice * qtyToExchange
+          };
+          await supabase.from('sale_items').update(updatedItem).eq('id', itemId);
+        }
+
+        // 4b. Obtener la venta actual para actualizar su total
+        const { data: sale, error: saleErr } = await supabase.from('sales').select('*').eq('id', saleId).single();
+        if (saleErr || !sale) throw new Error('No se encontró la venta para actualizar el total.');
+
+        const newTotalAmount = Math.max(0, parseFloat(sale.total_amount) + priceDiff);
+
+        // 4c. Marcar la venta como cambiada y actualizar total_amount en la tabla sales
+        await supabase.from('sales').update({
+          status: 'exchanged',
+          total_amount: newTotalAmount
+        }).eq('id', saleId);
+
+        // 4d. Registrar movimiento de caja por diferencia si corresponde
+        const register = await this.getCashRegister();
+        if (sale.type === 'pos' && register.status === 'open' && register.currentSession && sale.payment_method === 'Efectivo' && priceDiff !== 0) {
+          const isIncome = priceDiff > 0;
+          await this.addCashMovement(
+            register.currentSession.id,
+            isIncome ? 'income' : 'expense',
+            Math.abs(priceDiff),
+            `CAMBIO DE PRODUCTO EN VENTA ${sale.invoice_number} (${isIncome ? 'Cobro Extra' : 'Devolución'})`,
+            operator
+          );
+        }
+
+        // Obtener datos del comprobante para la bitácora
+        const invoiceNum = sale ? sale.invoice_number : `#${saleId.slice(-5)}`;
+        await this.addActionLog(
+          `Realizó cambio en Venta ${invoiceNum}: ${qtyToExchange}x ${item.product_name} ➔ ${newProd.name} (${newColorName || 'Sin Color'}, ${newSize || 'Sin Talla'}). Dif: S/. ${priceDiff.toFixed(2)}`,
+          operator
+        );
+
+        invalidateCache('products');
+        invalidateCache('sales');
+        return { success: true };
+      } catch (err) {
+        console.error('Error al realizar cambio de producto:', err);
+        throw err;
+      }
+    }
+    return { success: false, message: 'Supabase no inicializado.' };
+  },
+
   // --- BITÁCORA ---
   async getActionLogs() {
     if (supabase) {

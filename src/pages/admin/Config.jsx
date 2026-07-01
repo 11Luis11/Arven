@@ -639,22 +639,50 @@ CREATE TABLE IF NOT EXISTS config (
 
             <div>
               <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px' }}>Nombre Comercial</label>
-              <input type="text" className="input-field" value={config.storeName} onChange={e => handleTextChange('storeName', e.target.value)} />
+              <input type="text" className="input-field" value={config.storeName || ''} onChange={e => handleTextChange('storeName', e.target.value)} />
             </div>
 
-            <div>
+            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px', marginTop: '4px' }}>
+              <h4 style={{ fontSize: '13px', fontWeight: 600, marginBottom: '10px', color: 'var(--text-primary)' }}>Datos del Emisor (Comprobantes)</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px' }}>Razón Social / Nombre Legal</label>
+                  <input type="text" className="input-field" value={config.businessName || ''} onChange={e => handleTextChange('businessName', e.target.value)} placeholder="Ej. CARRILLO STORE S.A.C." />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px' }}>R.U.C.</label>
+                  <input type="text" className="input-field" value={config.ruc || ''} onChange={e => handleTextChange('ruc', e.target.value)} placeholder="Ej. 20601234567" />
+                </div>
+              </div>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px' }}>Dirección Fiscal</label>
+                <input type="text" className="input-field" value={config.fiscalAddress || ''} onChange={e => handleTextChange('fiscalAddress', e.target.value)} placeholder="Ej. Av. Larco 123, Miraflores, Lima" />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px' }}>Teléfono en Ticket</label>
+                  <input type="text" className="input-field" value={config.ticketPhone || ''} onChange={e => handleTextChange('ticketPhone', e.target.value)} placeholder="Ej. +51 987 654 321" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px' }}>Email en Ticket</label>
+                  <input type="text" className="input-field" value={config.ticketEmail || ''} onChange={e => handleTextChange('ticketEmail', e.target.value)} placeholder="Ej. ventas@carrillostore.com" />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
               <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px' }}>Título Banner Hero</label>
-              <input type="text" className="input-field" value={config.heroTitle} onChange={e => handleTextChange('heroTitle', e.target.value)} />
+              <input type="text" className="input-field" value={config.heroTitle || ''} onChange={e => handleTextChange('heroTitle', e.target.value)} />
             </div>
 
             <div>
               <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px' }}>Subtítulo Hero</label>
-              <textarea className="input-field" rows={2} value={config.heroSubtitle} onChange={e => handleTextChange('heroSubtitle', e.target.value)} />
+              <textarea className="input-field" rows={2} value={config.heroSubtitle || ''} onChange={e => handleTextChange('heroSubtitle', e.target.value)} />
             </div>
 
             <div>
               <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px' }}>Cinta Superior (Anuncio)</label>
-              <input type="text" className="input-field" value={config.bannerText} onChange={e => handleTextChange('bannerText', e.target.value)} />
+              <input type="text" className="input-field" value={config.bannerText || ''} onChange={e => handleTextChange('bannerText', e.target.value)} />
             </div>
 
             <button type="submit" className="btn-primary" style={{ alignSelf: 'flex-end', borderRadius: '0px' }}>
