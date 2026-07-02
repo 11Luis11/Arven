@@ -53,6 +53,7 @@ export default function POS() {
   // Print Dialog States
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [lastCreatedSale, setLastCreatedSale] = useState(null);
+  const [whatsappNumber, setWhatsappNumber] = useState('');
 
   // NEW: Item-level discount (% per item)
   const [itemDiscounts, setItemDiscounts] = useState({}); // { [uniqueId]: number }
@@ -442,14 +443,273 @@ export default function POS() {
       const mod = await import('jspdf');
       activeJsPDF = mod.jsPDF || mod.default;
     }
-    const doc = new activeJsPDF({ unit: 'mm', format: [80, 250] });
-
+    
+    const isInvoice = sale.document_type === 'Boleta' || sale.document_type === 'Factura';
+    
     let logoBase64 = null;
     if (config?.storeLogoUrl) {
       logoBase64 = await getImageDataUrl(config.storeLogoUrl);
     }
 
-    return _buildPdf(doc, sale, logoBase64);
+    if (isInvoice) {
+      // Create A4 premium styled layout for PDF downloads and WhatsApp sharing
+      const doc = new activeJsPDF({ unit: 'mm', format: 'a4' });
+      return _buildInvoicePdf(doc, sale, logoBase64);
+    } else {
+      // Keep thermal ticket format for sales tickets
+      const doc = new activeJsPDF({ unit: 'mm', format: [80, 250] });
+      return _buildPdf(doc, sale, logoBase64);
+    }
+  };
+
+  const _buildInvoicePdf = (doc, sale, logoBase64) => {
+    const storeName = (config?.businessName || config?.storeName || 'ARVEN').toUpperCase();
+    const address = config?.fiscalAddress || 'Dirección Fiscal';
+    const phone = config?.ticketPhone || '';
+    const email = config?.ticketEmail || '';
+    const ruc = config?.ruc || '20601234567';
+    const saleDate = new Date(sale.created_at);
+    const isFactura = sale.document_type === 'Factura';
+
+    // Primary Colors from design
+    const colorDark = [17, 17, 17]; // #111
+    const colorGold = [197, 168, 128]; // #C5A880
+    const colorLightBg = [250, 250, 250]; // #FAFAFA
+
+    // Header layout
+    // Draw Dark Header Banner
+    doc.setFillColor(colorDark[0], colorDark[1], colorDark[2]);
+    doc.rect(0, 0, 210, 42, 'F');
+
+    // Draw Gold accent bar under banner
+    doc.setFillColor(colorGold[0], colorGold[1], colorGold[2]);
+    doc.rect(0, 42, 210, 3, 'F');
+
+    // Logo / Business Name in Dark Header
+    let textX = 15;
+    if (logoBase64) {
+      try {
+        doc.addImage(logoBase64, 'PNG', 15, 8, 38, 25);
+        textX = 60;
+      } catch (err) {
+        console.error('Error rendering logo in Invoice PDF:', err);
+      }
+    }
+
+    // Company info
+    doc.setTextColor(255, 255, 255);
+    if (!logoBase64) {
+      doc.setFontSize(18);
+      doc.setFont(undefined, 'bold');
+      doc.text(storeName, 15, 18);
+      doc.setFontSize(8);
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(200, 200, 200);
+      doc.text(address, 15, 26, { maxWidth: 100 });
+      if (phone || email) {
+        doc.text(`${phone ? 'Tel: ' + phone : ''} ${email ? '| Email: ' + email : ''}`, 15, 33);
+      }
+    } else {
+      doc.setFontSize(8);
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(200, 200, 200);
+      doc.text(address, textX, 16, { maxWidth: 85 });
+      if (phone || email) {
+        doc.text(`${phone ? 'Tel: ' + phone : ''} ${email ? '| Email: ' + email : ''}`, textX, 28);
+      }
+    }
+
+    // Document Box in Header (Floating card on the right)
+    const boxX = 145;
+    const boxY = 7;
+    const boxW = 50;
+    const boxH = 28;
+    
+    // Draw outer box
+    doc.setDrawColor(colorGold[0], colorGold[1], colorGold[2]);
+    doc.setLineWidth(0.6);
+    doc.setFillColor(26, 26, 46); // dark navy
+    doc.rect(boxX, boxY, boxW, boxH, 'FD');
+
+    doc.setTextColor(colorGold[0], colorGold[1], colorGold[2]);
+    doc.setFontSize(9);
+    doc.setFont(undefined, 'bold');
+    doc.text(`R.U.C. N° ${ruc}`, boxX + (boxW/2), boxY + 7, { align: 'center' });
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(8);
+    const docLabel = isFactura ? 'FACTURA ELECTRÓNICA' : 'BOLETA DE VENTA';
+    doc.text(docLabel, boxX + (boxW/2), boxY + 15, { align: 'center' });
+
+    doc.setTextColor(colorGold[0], colorGold[1], colorGold[2]);
+    doc.setFontSize(11);
+    doc.text(`N° ${sale.invoice_number}`, boxX + (boxW/2), boxY + 23, { align: 'center' });
+
+    // Client card / Details section
+    let y = 58;
+    
+    // Title
+    doc.setTextColor(colorDark[0], colorDark[1], colorDark[2]);
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'bold');
+    doc.text('DATOS DEL ADQUIRIENTE', 15, y);
+    y += 4;
+
+    // Draw background card for client info
+    doc.setFillColor(colorLightBg[0], colorLightBg[1], colorLightBg[2]);
+    doc.setDrawColor(229, 231, 235); // #E5E7EB
+    doc.setLineWidth(0.2);
+    doc.rect(15, y, 180, 26, 'FD');
+
+    // Details grid
+    doc.setTextColor(107, 114, 128); // #6B7280
+    doc.setFontSize(7);
+    doc.text('CLIENTE', 20, y + 6);
+    doc.text('DOC. IDENTIDAD', 110, y + 6);
+    
+    doc.text('FECHA DE EMISIÓN', 20, y + 15);
+    doc.text('HORA DE EMISIÓN', 70, y + 15);
+    doc.text('FORMA DE PAGO', 120, y + 15);
+    doc.text('MONEDA', 165, y + 15);
+
+    doc.setTextColor(colorDark[0], colorDark[1], colorDark[2]);
+    doc.setFontSize(8.5);
+    doc.setFont(undefined, 'bold');
+    doc.text(sale.customer_name, 20, y + 10);
+    doc.text(sale.customer_document || '—', 110, y + 10);
+    
+    doc.text(saleDate.toLocaleDateString('es-PE'), 20, y + 19);
+    doc.text(saleDate.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: true }), 70, y + 19);
+    doc.text(sale.payment_method, 120, y + 19);
+    doc.text('SOLES (PEN)', 165, y + 19);
+
+    y += 36;
+
+    // Table of Items
+    doc.setFillColor(colorDark[0], colorDark[1], colorDark[2]);
+    doc.rect(15, y, 180, 8, 'F');
+
+    doc.setTextColor(colorGold[0], colorGold[1], colorGold[2]);
+    doc.setFontSize(8);
+    doc.setFont(undefined, 'bold');
+    doc.text('CANT.', 20, y + 5.5);
+    doc.text('UNIDAD', 35, y + 5.5);
+    doc.text('DESCRIPCIÓN', 55, y + 5.5);
+    doc.text('V. UNIT.', 135, y + 5.5, { align: 'right' });
+    doc.text('IGV (18%)', 160, y + 5.5, { align: 'right' });
+    doc.text('TOTAL', 190, y + 5.5, { align: 'right' });
+
+    y += 8;
+
+    const items = sale.items || [];
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(8);
+
+    items.forEach((item, idx) => {
+      // Alternating row background
+      if (idx % 2 === 1) {
+        doc.setFillColor(250, 250, 250);
+        doc.rect(15, y, 180, 8, 'F');
+      }
+      doc.setDrawColor(243, 244, 246); // #F3F4F6
+      doc.line(15, y + 8, 195, y + 8);
+
+      const precioVenta = item.unit_price;
+      const valorVenta = precioVenta / 1.18;
+      const igv = precioVenta - valorVenta;
+
+      doc.setTextColor(colorDark[0], colorDark[1], colorDark[2]);
+      doc.text(String(item.quantity), 20, y + 5.5);
+      doc.setTextColor(107, 114, 128);
+      doc.text('NIU', 35, y + 5.5);
+      doc.setTextColor(colorDark[0], colorDark[1], colorDark[2]);
+      
+      const pName = item.product_name || item.detailName || 'Producto';
+      const displayName = pName.length > 38 ? pName.substring(0, 38) + '…' : pName;
+      doc.text(displayName, 55, y + 5.5);
+
+      doc.text(`S/. ${formatNoRound(valorVenta)}`, 135, y + 5.5, { align: 'right' });
+      doc.setTextColor(239, 68, 68); // light red for IGV
+      doc.text(`S/. ${formatNoRound(igv * item.quantity)}`, 160, y + 5.5, { align: 'right' });
+      doc.setTextColor(colorDark[0], colorDark[1], colorDark[2]);
+      doc.setFont(undefined, 'bold');
+      doc.text(`S/. ${formatNoRound(item.quantity * precioVenta)}`, 190, y + 5.5, { align: 'right' });
+      doc.setFont(undefined, 'normal');
+
+      y += 8;
+    });
+
+    y += 8;
+
+    // Totals card on bottom right
+    const totX = 135;
+    const totW = 60;
+    const totalImporte = sale.total_amount;
+    const totalBaseGravada = totalImporte / 1.18;
+    const totalIGV = totalImporte - totalBaseGravada;
+    const descuento = sale.discount_amount || 0;
+
+    doc.setDrawColor(229, 231, 235);
+    doc.setLineWidth(0.2);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(totX, y, totW, descuento > 0 ? 32 : 24, 'FD');
+
+    doc.setFontSize(8);
+    doc.setTextColor(107, 114, 128);
+    doc.text('Op. Gravada (Base):', totX + 3, y + 5.5);
+    doc.setTextColor(colorDark[0], colorDark[1], colorDark[2]);
+    doc.text(`S/. ${formatNoRound(totalBaseGravada)}`, totX + totW - 3, y + 5.5, { align: 'right' });
+
+    y += 8;
+    doc.setTextColor(239, 68, 68);
+    doc.text('I.G.V. (18%):', totX + 3, y + 5.5);
+    doc.text(`S/. ${formatNoRound(totalIGV)}`, totX + totW - 3, y + 5.5, { align: 'right' });
+
+    if (descuento > 0) {
+      y += 8;
+      doc.setTextColor(245, 158, 11);
+      doc.text('Descuento:', totX + 3, y + 5.5);
+      doc.text(`- S/. ${formatNoRound(descuento)}`, totX + totW - 3, y + 5.5, { align: 'right' });
+    }
+
+    y += 8;
+    // Total banner
+    doc.setFillColor(colorDark[0], colorDark[1], colorDark[2]);
+    doc.rect(totX, y, totW, 10, 'F');
+    doc.setTextColor(colorGold[0], colorGold[1], colorGold[2]);
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(9);
+    doc.text('TOTAL:', totX + 4, y + 6.5);
+    doc.text(`S/. ${formatNoRound(totalImporte)}`, totX + totW - 4, y + 6.5, { align: 'right' });
+
+    y += 18;
+
+    // Stamp / Resolution banner
+    doc.setFillColor(5, 150, 105, 0.05); // light green bg
+    doc.setDrawColor(5, 150, 105);
+    doc.setLineWidth(0.4);
+    doc.rect(15, y, 180, 8, 'FD');
+    doc.setTextColor(5, 150, 105);
+    doc.setFontSize(8.5);
+    doc.text('COMPROBANTE EMITIDO DE ACUERDO A LA REGULACIÓN SUNAT', 105, y + 5.5, { align: 'center' });
+
+    y += 15;
+
+    // Footer info
+    doc.setDrawColor(229, 231, 235);
+    doc.line(15, y, 195, y);
+    
+    doc.setTextColor(156, 163, 175);
+    doc.setFontSize(7.5);
+    doc.setFont(undefined, 'normal');
+    doc.text([
+      `Representación impresa de la ${isFactura ? 'Factura' : 'Boleta de Venta'} Electrónica.`,
+      `Consulte en: ${storeName.toLowerCase().replace(/\s/g, '')}.com/consultas`,
+      'Autorizado mediante resolución SUNAT N° 034-2020/SUNAT.',
+      `Hash: ${btoa(sale.invoice_number).slice(0, 24)}`
+    ], 15, y + 5);
+
+    return doc.output('blob');
   };
 
   const _buildPdf = (doc, sale, logoBase64) => {
@@ -474,10 +734,12 @@ export default function POS() {
     }
 
     // Header
-    doc.setFontSize(12);
-    doc.setFont(undefined, 'bold');
-    doc.text(storeName, 40, y, { align: 'center' });
-    y += 5;
+    if (!logoBase64) {
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      doc.text(storeName, 40, y, { align: 'center' });
+      y += 5;
+    }
 
     if (ruc) {
       doc.setFontSize(7);
@@ -581,11 +843,20 @@ export default function POS() {
     doc.text('¡Gracias por su compra!', 40, y, { align: 'center' });
     y += 8;
 
-    // Resize page to actual content height
-    const pageHeight = y + 4;
-    doc.internal.pageSize.height = pageHeight;
-
+    // Return generated blob directly without buggy page resizing
     return doc.output('blob');
+  };
+
+  const handleShareWhatsApp = (sale, items, phone) => {
+    let cleanPhone = phone.replace(/[^0-9]/g, '');
+    if (cleanPhone.length === 9 && cleanPhone.startsWith('9')) {
+      cleanPhone = '51' + cleanPhone;
+    }
+    const storeName = config?.businessName || config?.storeName || 'ARVEN';
+    const itemsText = items.map(item => `• ${item.quantity}x ${item.product_name || item.detailName} - S/. ${formatNoRound(item.total_price || (item.quantity * item.unit_price))}`).join('\n');
+    const text = `🧾 *${storeName.toUpperCase()}*\n*${sale.document_type || 'Boleta'} N° ${sale.invoice_number}*\n\n📅 Fecha: ${new Date(sale.created_at).toLocaleDateString('es-PE')}\n👤 Cliente: ${sale.customer_name}\n💳 Pago: ${sale.payment_method}\n\n*Detalle de compra:*\n${itemsText}\n\n*Total: S/. ${formatNoRound(sale.total_amount)}*\n\n¡Gracias por tu preferencia! ¡Te esperamos pronto! 🤎`;
+    const encodedMsg = encodeURIComponent(text);
+    window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMsg}`, '_blank');
   };
 
   const sendPdfViaWhatsApp = async (sale) => {
@@ -610,10 +881,19 @@ export default function POS() {
         }
       }
 
-      // Fallback: Subir a Supabase y compartir enlace en wa.me
+      // Fallback: Subir a Supabase y compartir enlace en api.whatsapp.com
       const publicUrl = await DataService.uploadImage(file);
 
-      let cleanPhone = sale.customer_phone.replace(/[^0-9]/g, '');
+      let phone = sale.customer_phone;
+      if (!phone || !phone.trim()) {
+        phone = prompt('Por favor ingresa el número de WhatsApp del cliente:');
+        if (!phone || !phone.trim()) {
+          setSendingWhatsApp(false);
+          return;
+        }
+      }
+
+      let cleanPhone = phone.replace(/[^0-9]/g, '');
       if (cleanPhone.length === 9 && cleanPhone.startsWith('9')) {
         cleanPhone = '51' + cleanPhone;
       }
@@ -621,7 +901,7 @@ export default function POS() {
       const storeName = config?.businessName || config?.storeName || 'CARRILLO STORE';
       const text = `🧾 *${storeName}*\nComprobante: ${sale.document_type || 'Ticket'} N° ${sale.invoice_number}\nTotal: S/. ${formatNoRound(sale.total_amount)}\n\n📄 Descarga tu comprobante en PDF:\n${publicUrl}`;
       const encodedMsg = encodeURIComponent(text);
-      window.open(`https://wa.me/${cleanPhone}?text=${encodedMsg}`, '_blank');
+      window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMsg}`, '_blank');
     } catch (err) {
       console.error('Error generando PDF para WhatsApp:', err);
       setErrorMsg('No se pudo generar el PDF. Verifica la conexión.');
@@ -1694,119 +1974,169 @@ export default function POS() {
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
           }}>
             <div style={{
-              backgroundColor: '#FFF', width: '100%', maxWidth: '320px',
+              backgroundColor: '#FFF', width: '100%', maxWidth: '340px',
               maxHeight: '90vh', overflowY: 'auto',
-              fontFamily: "'Courier New', Courier, monospace", fontSize: '12px', color: '#000',
-              padding: '24px 20px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', border: '1px dashed #ccc'
+              fontFamily: "'Segoe UI', Roboto, 'Helvetica Neue', sans-serif", fontSize: '12px', color: '#111',
+              padding: '28px 24px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', border: '1px solid #E5E7EB',
+              borderRadius: '8px'
             }}>
-              <div style={{ textAlign: 'center', marginBottom: '12px' }}>
-                {config?.storeLogoUrl && (
-                  <img src={config.storeLogoUrl} alt="Logo" style={{ maxHeight: '60px', maxWidth: '120px', objectFit: 'contain', marginBottom: '8px' }} />
-                )}
-                <div style={{ fontSize: '16px', fontWeight: 700, letterSpacing: '0.05em' }}>{(config?.businessName || config?.storeName || 'CARRILLO STORE').toUpperCase()}</div>
-                <div style={{ fontSize: '10px', color: '#666', marginTop: '2px' }}>{config?.fiscalAddress || 'Av. Larco 123, Miraflores'}</div>
-                {config?.ticketPhone && <div style={{ fontSize: '10px', color: '#666' }}>Tel: {config.ticketPhone}</div>}
-              </div>
-              <div style={{ borderTop: '1px dashed #333', margin: '8px 0' }} />
-              <div style={{ marginBottom: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>TICKET:</span><span style={{ fontWeight: 700 }}>{lastCreatedSale.invoice_number}</span></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>FECHA:</span><span>{saleDate.toLocaleDateString()}</span></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>HORA:</span><span>{saleDate.toLocaleTimeString()}</span></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>CAJERO:</span><span>{lastCreatedSale.operator}</span></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>CLIENTE:</span><span>{lastCreatedSale.customer_name}</span></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>PAGO:</span><span>{lastCreatedSale.payment_method}</span></div>
-              </div>
-              <div style={{ borderTop: '1px dashed #333', margin: '8px 0' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, marginBottom: '4px', fontSize: '11px' }}>
-                <span style={{ flex: 2 }}>PRODUCTO</span>
-                <span style={{ flex: 0.5, textAlign: 'center' }}>CTD</span>
-                <span style={{ flex: 1, textAlign: 'right' }}>P.U.</span>
-                <span style={{ flex: 1, textAlign: 'right' }}>TOTAL</span>
-              </div>
-              <div style={{ borderTop: '1px solid #ddd', margin: '2px 0 4px 0' }} />
-              {items.map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '11px' }}>
-                  <span style={{ flex: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.product_name}</span>
-                  <span style={{ flex: 0.5, textAlign: 'center' }}>{item.quantity}</span>
-                  <span style={{ flex: 1, textAlign: 'right' }}>{formatNoRound(item.unit_price)}</span>
-                  <span style={{ flex: 1, textAlign: 'right' }}>{formatNoRound(item.quantity * item.unit_price)}</span>
-                </div>
-              ))}
-              <div style={{ borderTop: '1px dashed #333', margin: '8px 0' }} />
-              <div style={{ marginBottom: '4px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>SUBTOTAL:</span><span>S/. {formatNoRound(lastCreatedSale.total_amount + lastCreatedSale.discount_amount)}</span>
-                </div>
-                {lastCreatedSale.discount_amount > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e02424' }}>
-                    <span>DESCUENTO:</span><span>- S/. {formatNoRound(lastCreatedSale.discount_amount)}</span>
+              {/* Header */}
+              <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                {config?.storeLogoUrl ? (
+                  <img src={config.storeLogoUrl} alt="Logo" style={{ maxHeight: '55px', maxWidth: '200px', objectFit: 'contain', marginBottom: '10px' }} />
+                ) : (
+                  <div style={{ fontSize: '18px', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#111', marginBottom: '10px' }}>
+                    {config?.businessName || config?.storeName || 'ARVEN'}
                   </div>
                 )}
-                <div style={{ borderTop: '1px solid #333', margin: '4px 0' }} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '15px' }}>
-                  <span>TOTAL:</span><span>S/. {formatNoRound(lastCreatedSale.total_amount)}</span>
+                <div style={{ fontSize: '13px', fontWeight: 800, color: '#111', textTransform: 'uppercase', letterSpacing: '0.04em' }}>TICKET DE VENTA</div>
+                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '2px', fontWeight: 600 }}>RUC: {config?.ruc || '20601234567'}</div>
+              </div>
+
+              {/* Date & Time Icons */}
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', fontSize: '10px', color: '#4B5563', backgroundColor: '#F9FAFB', padding: '6px 12px', borderRadius: '4px', border: '1px solid #E5E7EB', marginBottom: '12px' }}>
+                <span>📅 {saleDate.toLocaleDateString('es-PE')}</span>
+                <span>🕐 {saleDate.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+              </div>
+
+              <div style={{ textAlign: 'center', fontSize: '12px', fontWeight: 700, color: '#C5A880', letterSpacing: '0.05em', marginBottom: '14px' }}>
+                {lastCreatedSale.invoice_number}
+              </div>
+
+              <div style={{ borderTop: '1px dashed #D1D5DB', margin: '10px 0' }} />
+
+              {/* Customer info (if exists) */}
+              <div style={{ fontSize: '11px', color: '#4B5563', lineHeight: '1.4', marginBottom: '10px' }}>
+                <div><strong>Cliente:</strong> {lastCreatedSale.customer_name}</div>
+                {lastCreatedSale.customer_document && <div><strong>Doc:</strong> {lastCreatedSale.customer_document}</div>}
+              </div>
+
+              <div style={{ borderTop: '1px dashed #D1D5DB', margin: '10px 0' }} />
+
+              {/* Table Headers */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '10px', color: '#374151', textTransform: 'uppercase', marginBottom: '6px' }}>
+                <span style={{ flex: 0.5, textAlign: 'center' }}>CANT.</span>
+                <span style={{ flex: 2, textAlign: 'left' }}>DESCRIPCIÓN</span>
+                <span style={{ flex: 1, textAlign: 'right' }}>TOTAL</span>
+              </div>
+
+              <div style={{ borderTop: '1px solid #E5E7EB', marginBottom: '8px' }} />
+
+              {/* Items List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
+                {items.map((item, idx) => (
+                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', alignItems: 'center', color: '#111' }}>
+                    <span style={{ flex: 0.5, textAlign: 'center', fontWeight: 600 }}>{item.quantity}</span>
+                    <span style={{ flex: 2, textAlign: 'left' }}>{item.product_name || item.detailName}</span>
+                    <span style={{ flex: 1, textAlign: 'right', fontWeight: 600 }}>S/. {formatNoRound(item.quantity * item.unit_price)}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ borderTop: '1px dashed #D1D5DB', margin: '10px 0' }} />
+
+              {/* Totals Box */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: '#4B5563', marginBottom: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>SUBTOTAL:</span>
+                  <span>S/. {formatNoRound(lastCreatedSale.total_amount + lastCreatedSale.discount_amount)}</span>
+                </div>
+                {lastCreatedSale.discount_amount > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#EF4444' }}>
+                    <span>DESCUENTO:</span>
+                    <span>- S/. {formatNoRound(lastCreatedSale.discount_amount)}</span>
+                  </div>
+                )}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  backgroundColor: '#111',
+                  color: '#C5A880',
+                  padding: '6px 10px',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  marginTop: '4px'
+                }}>
+                  <span>TOTAL:</span>
+                  <span>S/. {formatNoRound(lastCreatedSale.total_amount)}</span>
                 </div>
               </div>
-              <div style={{ borderTop: '1px dashed #333', margin: '8px 0' }} />
-              <div style={{ textAlign: 'center', fontSize: '10px', color: '#666' }}>
-                <div>¡Gracias por tu compra!</div>
-                <div>Cambios hasta 7 días con ticket</div>
-                <div style={{ marginTop: '6px' }}>www.carrillostore.com</div>
+
+              <div style={{ borderTop: '1px dashed #D1D5DB', margin: '10px 0' }} />
+
+              {/* Forma de pago */}
+              <div style={{ textAlign: 'center', fontSize: '11px', color: '#4B5563', marginBottom: '12px' }}>
+                <strong>Forma de pago:</strong> {lastCreatedSale.payment_method}
               </div>
-              <div style={{ borderTop: '1px dashed #333', margin: '12px 0' }} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '16px', fontFamily: 'inherit' }}>
+
+              <div style={{ textAlign: 'center', fontSize: '10px', color: '#6B7280', margin: '12px 0', fontStyle: 'italic' }}>
+                ¡Gracias por tu compra! ♡
+              </div>
+
+              {/* Social networks dark bar */}
+              <div style={{
+                backgroundColor: '#111',
+                color: '#FFF',
+                padding: '10px',
+                textAlign: 'center',
+                fontSize: '9px',
+                borderRadius: '4px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '2px',
+                marginBottom: '16px'
+              }}>
+                <div>Instagram: @arven.brands | Cel: {config?.footer?.whatsapp || '+51 987 654 321'}</div>
+                <div style={{ letterSpacing: '0.08em', fontWeight: 700, marginTop: '2px' }}>WWW.ARVEN.COM</div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => window.print()} className="btn-primary" style={{ flex: 1, display: 'flex', gap: '6px', justifyContent: 'center', borderRadius: '0px', fontSize: '12px', padding: '10px' }}>
+                  <button onClick={() => window.print()} className="btn-primary" style={{ flex: 1, display: 'flex', gap: '6px', justifyContent: 'center', borderRadius: '4px', fontSize: '12px', padding: '10px' }}>
                     🖨️ Imprimir
                   </button>
-                  <button onClick={() => { setShowPrintModal(false); setLastCreatedSale(null); }} className="btn-secondary" style={{ flex: 1, borderRadius: '0px', fontSize: '12px', padding: '10px' }}>
+                  <button onClick={() => { setShowPrintModal(false); setLastCreatedSale(null); }} className="btn-secondary" style={{ flex: 1, borderRadius: '4px', fontSize: '12px', padding: '10px' }}>
                     Continuar
                   </button>
                 </div>
-                {/* WhatsApp Button - only if phone exists */}
-                {hasPhone && (
-                  <button
-                    disabled={sendingWhatsApp}
-                    onClick={() => sendPdfViaWhatsApp(lastCreatedSale)}
-                    style={{
-                      width: '100%',
-                      padding: '10px',
-                      backgroundColor: sendingWhatsApp ? '#88d4a0' : '#25D366',
-                      color: '#FFF',
-                      border: 'none',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      cursor: sendingWhatsApp ? 'wait' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      borderRadius: '0px',
-                      transition: 'background-color 0.15s'
-                    }}
-                    onMouseEnter={e => { if (!sendingWhatsApp) e.currentTarget.style.backgroundColor = '#1EBE5A'; }}
-                    onMouseLeave={e => { if (!sendingWhatsApp) e.currentTarget.style.backgroundColor = '#25D366'; }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
-                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                    </svg>
-                    {sendingWhatsApp ? 'Generando PDF...' : 'Enviar PDF por WhatsApp'}
-                  </button>
-                )}
+                
+                {/* PDF Option */}
+                <button
+                  disabled={sendingWhatsApp}
+                  onClick={() => sendPdfViaWhatsApp(lastCreatedSale)}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    backgroundColor: '#E5E7EB',
+                    color: '#374151',
+                    border: '1px solid #D1D5DB',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: sendingWhatsApp ? 'wait' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    borderRadius: '4px'
+                  }}
+                >
+                  {sendingWhatsApp ? 'Generando PDF...' : 'Descargar / Enviar PDF del Ticket'}
+                </button>
               </div>
             </div>
           </div>
         );
       })()}
 
-      {/* MODAL BOLETA / FACTURA SUNAT */}
+      {/* MODAL BOLETA / FACTURA SUNAT — Premium Design */}
       {showPrintModal && lastCreatedSale && lastCreatedSale.document_type !== 'Sin Datos' && (() => {
         const saleDate = new Date(lastCreatedSale.created_at);
         const items = lastCreatedSale.items;
         const isFactura = lastCreatedSale.document_type === 'Factura';
         const hasPhone = lastCreatedSale.customer_phone && lastCreatedSale.customer_phone.trim().length > 0;
 
-         const itemsWithTax = items.map(item => {
+        const itemsWithTax = items.map(item => {
           const precioVentaUnitario = item.unit_price;
           const valorVentaUnitario = precioVentaUnitario / 1.18;
           const igvUnitario = precioVentaUnitario - valorVentaUnitario;
@@ -1823,143 +2153,198 @@ export default function POS() {
         return (
           <div className="invoice-print-container" style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 5000,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
+            backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 5000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px',
+            backdropFilter: 'blur(4px)'
           }}>
             <div style={{
-              backgroundColor: '#FFF', padding: '32px', border: '2px solid #1a1a2e',
-              maxWidth: '580px', width: '100%', maxHeight: '90vh', overflowY: 'auto',
-              display: 'flex', flexDirection: 'column', gap: '0',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
-              fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+              backgroundColor: '#FFF', maxWidth: '600px', width: '100%', maxHeight: '90vh', overflowY: 'auto',
+              display: 'flex', flexDirection: 'column',
+              boxShadow: '0 25px 80px rgba(0,0,0,0.25)',
+              fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+              borderRadius: '10px',
+              overflow: 'hidden'
             }}>
-              {/* CABECERA */}
-              <div style={{ display: 'flex', gap: '20px', paddingBottom: '16px', borderBottom: '2px solid #1a1a2e', marginBottom: '16px' }}>
+              {/* CABECERA PREMIUM — Fondo oscuro con acento dorado */}
+              <div style={{
+                background: 'linear-gradient(135deg, #111 0%, #1a1a2e 100%)',
+                padding: '24px 28px',
+                display: 'flex', gap: '20px', alignItems: 'center'
+              }}>
                 <div style={{ flex: 1, display: 'flex', gap: '14px', alignItems: 'center' }}>
-                  {config?.storeLogoUrl && (
-                    <img src={config.storeLogoUrl} alt="Logo" style={{ maxHeight: '60px', maxWidth: '120px', objectFit: 'contain' }} />
+                  {config?.storeLogoUrl ? (
+                    <img src={config.storeLogoUrl} alt="Logo" style={{ maxHeight: '50px', maxWidth: '110px', objectFit: 'contain', borderRadius: '6px' }} />
+                  ) : (
+                    <div style={{ fontSize: '20px', fontWeight: 800, color: '#FFF', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                      {config?.businessName || config?.storeName || 'ARVEN'}
+                    </div>
                   )}
-                  <div>
-                    <div style={{ fontSize: '18px', fontWeight: 800, color: '#1a1a2e', letterSpacing: '0.03em' }}>{config?.businessName || config?.storeName || 'CARRILLO STORE S.A.C.'}</div>
-                    <div style={{ fontSize: '11px', color: '#555', marginTop: '4px', lineHeight: 1.5 }}>
-                      {config?.fiscalAddress || 'Av. Larco 123, Miraflores, Lima'}<br />
+                  {config?.storeLogoUrl && (
+                    <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
+                      {config?.fiscalAddress || ''}<br />
+                      {config?.ticketPhone && <>Tel: {config.ticketPhone}</>}
+                    </div>
+                  )}
+                  {!config?.storeLogoUrl && (
+                    <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
+                      {config?.fiscalAddress || 'Dirección Fiscal'}<br />
                       {config?.ticketPhone && <>Tel: {config.ticketPhone}<br /></>}
                       {config?.ticketEmail && <>Email: {config.ticketEmail}</>}
                     </div>
-                  </div>
-                </div>
-                <div style={{ border: '2px solid #c0392b', padding: '12px 16px', textAlign: 'center', minWidth: '200px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '4px' }}>
-                  <div style={{ fontSize: '10px', fontWeight: 600, color: '#c0392b', letterSpacing: '0.05em' }}>R.U.C. N° {config?.ruc || '20601234567'}</div>
-                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#c0392b' }}>{isFactura ? 'FACTURA ELECTRÓNICA' : 'BOLETA DE VENTA ELECTRÓNICA'}</div>
-                  <div style={{ fontSize: '15px', fontWeight: 800, color: '#c0392b' }}>N° {lastCreatedSale.invoice_number}</div>
-                </div>
-              </div>
-
-              {/* DATOS ADQUIRIENTE */}
-              <div style={{ border: '1px solid #ddd', padding: '12px 14px', fontSize: '12px', marginBottom: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px', backgroundColor: '#FAFAFA' }}>
-                <div><strong>Adquiriente:</strong> {lastCreatedSale.customer_name}</div>
-                <div><strong>Doc. Identidad:</strong> {lastCreatedSale.customer_document}</div>
-                <div><strong>Fecha de Emisión:</strong> {saleDate.toLocaleDateString()}</div>
-                <div><strong>Hora:</strong> {saleDate.toLocaleTimeString()}</div>
-                <div><strong>Moneda:</strong> SOLES (PEN)</div>
-                <div><strong>Forma de Pago:</strong> {lastCreatedSale.payment_method}</div>
-              </div>
-
-              {/* TABLA DE ITEMS */}
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left', marginBottom: '16px' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#1a1a2e', color: '#FFF' }}>
-                    <th style={{ padding: '8px 6px', fontWeight: 600 }}>Cantidad</th>
-                    <th style={{ padding: '8px 6px', fontWeight: 600 }}>Unidad</th>
-                    <th style={{ padding: '8px 6px', fontWeight: 600 }}>Descripción</th>
-                    <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 600 }}>Valor Unitario</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {itemsWithTax.map((item, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #eee', backgroundColor: idx % 2 === 0 ? '#FFF' : '#F9F9FB' }}>
-                      <td style={{ padding: '8px 6px' }}>{item.quantity}</td>
-                      <td style={{ padding: '8px 6px' }}>NIU</td>
-                      <td style={{ padding: '8px 6px' }}>{item.product_name}</td>
-                      <td style={{ padding: '8px 6px', textAlign: 'right' }}>S/. {formatNoRound(item.valorVentaUnitario)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {/* RESUMEN TRIBUTARIO */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
-                <div style={{ width: '280px', border: '1px solid #ddd', fontSize: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderBottom: '1px solid #eee' }}>
-                    <span>Op. Gravada (Base):</span><span>S/. {formatNoRound(totalBaseGravada)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderBottom: '1px solid #eee', color: '#c0392b', fontWeight: 600 }}>
-                    <span>I.G.V. (18%):</span><span>S/. {formatNoRound(totalIGV)}</span>
-                  </div>
-                  {descuento > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderBottom: '1px solid #eee', color: '#e67e22' }}>
-                      <span>Descuento:</span><span>- S/. {formatNoRound(descuento)}</span>
-                    </div>
                   )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', fontWeight: 700, fontSize: '15px', backgroundColor: '#1a1a2e', color: '#FFF' }}>
-                    <span>IMPORTE TOTAL:</span><span>S/. {formatNoRound(totalImporte)}</span>
+                </div>
+                {/* Recuadro del tipo de comprobante */}
+                <div style={{
+                  border: '2px solid #C5A880', borderRadius: '8px',
+                  padding: '10px 16px', textAlign: 'center', minWidth: '190px',
+                  display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px',
+                  backgroundColor: 'rgba(197,168,128,0.08)'
+                }}>
+                  <div style={{ fontSize: '9px', fontWeight: 600, color: '#C5A880', letterSpacing: '0.08em', textTransform: 'uppercase' }}>R.U.C. N° {config?.ruc || '20601234567'}</div>
+                  <div style={{ fontSize: '12px', fontWeight: 800, color: '#FFF', letterSpacing: '0.02em' }}>{isFactura ? 'FACTURA ELECTRÓNICA' : 'BOLETA DE VENTA ELECTRÓNICA'}</div>
+                  <div style={{ fontSize: '14px', fontWeight: 800, color: '#C5A880' }}>N° {lastCreatedSale.invoice_number}</div>
+                </div>
+              </div>
+
+              {/* CUERPO */}
+              <div style={{ padding: '24px 28px' }}>
+
+                {/* DATOS ADQUIRIENTE — Tarjeta con icono */}
+                <div style={{
+                  border: '1px solid #E5E7EB', borderRadius: '8px',
+                  padding: '14px 16px', fontSize: '12px', marginBottom: '20px',
+                  display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px',
+                  backgroundColor: '#FAFAFA', position: 'relative'
+                }}>
+                  <div style={{ position: 'absolute', top: '-10px', left: '16px', backgroundColor: '#FFF', padding: '0 8px', fontSize: '10px', fontWeight: 700, color: '#C5A880', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                    Datos del Adquiriente
+                  </div>
+                  <div><span style={{ color: '#6B7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cliente</span><br /><strong style={{ color: '#111' }}>{lastCreatedSale.customer_name}</strong></div>
+                  <div><span style={{ color: '#6B7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Doc. Identidad</span><br /><strong style={{ color: '#111' }}>{lastCreatedSale.customer_document}</strong></div>
+                  <div><span style={{ color: '#6B7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Fecha de Emisión</span><br /><strong style={{ color: '#111' }}>{saleDate.toLocaleDateString('es-PE')}</strong></div>
+                  <div><span style={{ color: '#6B7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Hora</span><br /><strong style={{ color: '#111' }}>{saleDate.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: true })}</strong></div>
+                  <div><span style={{ color: '#6B7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Moneda</span><br /><strong style={{ color: '#111' }}>SOLES (PEN)</strong></div>
+                  <div><span style={{ color: '#6B7280', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Forma de Pago</span><br /><strong style={{ color: '#111' }}>{lastCreatedSale.payment_method}</strong></div>
+                </div>
+
+                {/* TABLA DE ITEMS — Cabecera dorada */}
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left', marginBottom: '20px', borderRadius: '6px', overflow: 'hidden' }}>
+                  <thead>
+                    <tr style={{ background: 'linear-gradient(135deg, #111 0%, #1a1a2e 100%)', color: '#C5A880' }}>
+                      <th style={{ padding: '10px 8px', fontWeight: 700, fontSize: '10px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Cant.</th>
+                      <th style={{ padding: '10px 8px', fontWeight: 700, fontSize: '10px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Unidad</th>
+                      <th style={{ padding: '10px 8px', fontWeight: 700, fontSize: '10px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Descripción</th>
+                      <th style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 700, fontSize: '10px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>V. Unit.</th>
+                      <th style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 700, fontSize: '10px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>IGV</th>
+                      <th style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 700, fontSize: '10px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {itemsWithTax.map((item, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid #F3F4F6', backgroundColor: idx % 2 === 0 ? '#FFF' : '#FAFAFA', transition: 'background-color 0.15s' }}>
+                        <td style={{ padding: '9px 8px', fontWeight: 600, color: '#111' }}>{item.quantity}</td>
+                        <td style={{ padding: '9px 8px', color: '#6B7280' }}>NIU</td>
+                        <td style={{ padding: '9px 8px', color: '#111' }}>{item.product_name}</td>
+                        <td style={{ padding: '9px 8px', textAlign: 'right', color: '#374151' }}>S/. {formatNoRound(item.valorVentaUnitario)}</td>
+                        <td style={{ padding: '9px 8px', textAlign: 'right', color: '#EF4444', fontSize: '10px' }}>S/. {formatNoRound(item.totalIgv)}</td>
+                        <td style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700, color: '#111' }}>S/. {formatNoRound(item.quantity * item.unit_price)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {/* RESUMEN TRIBUTARIO — Alineado a la derecha */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '20px' }}>
+                  <div style={{ width: '300px', border: '1px solid #E5E7EB', borderRadius: '8px', overflow: 'hidden', fontSize: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid #F3F4F6', color: '#374151' }}>
+                      <span>Op. Gravada (Base):</span><span style={{ fontWeight: 600 }}>S/. {formatNoRound(totalBaseGravada)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid #F3F4F6', color: '#EF4444', fontWeight: 600 }}>
+                      <span>I.G.V. (18%):</span><span>S/. {formatNoRound(totalIGV)}</span>
+                    </div>
+                    {descuento > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid #F3F4F6', color: '#F59E0B', fontWeight: 600 }}>
+                        <span>Descuento:</span><span>- S/. {formatNoRound(descuento)}</span>
+                      </div>
+                    )}
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between', padding: '12px 14px',
+                      fontWeight: 800, fontSize: '15px',
+                      background: 'linear-gradient(135deg, #111 0%, #1a1a2e 100%)', color: '#C5A880'
+                    }}>
+                      <span>IMPORTE TOTAL:</span><span>S/. {formatNoRound(totalImporte)}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* ESTADO */}
-              <div style={{ textAlign: 'center', padding: '8px', marginBottom: '12px', border: '2px solid #059669', color: '#059669', fontWeight: 700, fontSize: '13px', letterSpacing: '0.05em' }}>
-                ✓ COMPROBANTE EMITIDO
-              </div>
-
-              {/* QR + Pie */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', borderTop: '1px solid #ddd', paddingTop: '14px', marginBottom: '16px' }}>
-                <svg width="60" height="60" viewBox="0 0 100 100" fill="none" stroke="#111" strokeWidth="4">
-                  <rect x="10" y="10" width="80" height="80" strokeWidth="2" />
-                  <rect x="20" y="20" width="20" height="20" />
-                  <rect x="60" y="20" width="20" height="20" />
-                  <rect x="20" y="60" width="20" height="20" />
-                  <line x1="50" y1="20" x2="50" y2="80" strokeWidth="2" strokeDasharray="4 4" />
-                  <line x1="20" y1="50" x2="80" y2="50" strokeWidth="2" strokeDasharray="4 4" />
-                </svg>
-                <div style={{ fontSize: '9px', color: '#888', lineHeight: 1.5 }}>
-                  Representación impresa de la {isFactura ? 'Factura' : 'Boleta de Venta'} Electrónica.
-                  Consulte en: <strong>carrillostore.com/consultas</strong><br />
-                  Autorizado mediante resolución SUNAT N° 034-2020/SUNAT.<br />
-                  Hash: {btoa(lastCreatedSale.invoice_number).slice(0, 24)}
+                {/* ESTADO — Badge verde */}
+                <div style={{
+                  textAlign: 'center', padding: '10px',
+                  marginBottom: '16px', borderRadius: '8px',
+                  border: '2px solid #059669', color: '#059669',
+                  fontWeight: 700, fontSize: '13px', letterSpacing: '0.05em',
+                  backgroundColor: 'rgba(5,150,105,0.04)'
+                }}>
+                  ✓ COMPROBANTE EMITIDO
                 </div>
-              </div>
 
-              {/* Botones */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button onClick={() => window.print()} className="btn-primary" style={{ flex: 1, display: 'flex', gap: '8px', justifyContent: 'center', borderRadius: '0px', fontSize: '13px', padding: '12px' }}>
-                    🖨️ Imprimir Comprobante
-                  </button>
-                  <button onClick={() => { setShowPrintModal(false); setLastCreatedSale(null); }} className="btn-secondary" style={{ flex: 1, borderRadius: '0px', fontSize: '13px', padding: '12px' }}>
-                    Continuar
-                  </button>
+                {/* Pie legal */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '16px',
+                  borderTop: '1px solid #E5E7EB', paddingTop: '14px', marginBottom: '18px'
+                }}>
+                  <div style={{ fontSize: '9px', color: '#9CA3AF', lineHeight: 1.6 }}>
+                    Representación impresa de la {isFactura ? 'Factura' : 'Boleta de Venta'} Electrónica.<br />
+                    Consulte en: <strong style={{ color: '#6B7280' }}>{config?.storeName?.toLowerCase().replace(/\s/g, '') || 'arven'}.com/consultas</strong><br />
+                    Autorizado mediante resolución SUNAT N° 034-2020/SUNAT.<br />
+                    Hash: <span style={{ fontFamily: 'monospace', fontSize: '8px' }}>{btoa(lastCreatedSale.invoice_number).slice(0, 24)}</span>
+                  </div>
                 </div>
-                {/* WhatsApp Button - only if phone exists */}
-                {hasPhone && (
+
+                {/* Action Buttons (no-print) */}
+                <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => window.print()}
+                      style={{
+                        flex: 1, display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'center',
+                        padding: '12px', fontSize: '13px', fontWeight: 700,
+                        background: 'linear-gradient(135deg, #111 0%, #1a1a2e 100%)', color: '#C5A880',
+                        border: 'none', borderRadius: '8px', cursor: 'pointer',
+                        transition: 'opacity 0.15s'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+                      onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                    >
+                      🖨️ Imprimir Comprobante
+                    </button>
+                    <button
+                      onClick={() => { setShowPrintModal(false); setLastCreatedSale(null); }}
+                      style={{
+                        flex: 1, padding: '12px', fontSize: '13px', fontWeight: 700,
+                        backgroundColor: '#F3F4F6', color: '#374151',
+                        border: '1px solid #E5E7EB', borderRadius: '8px',
+                        cursor: 'pointer', transition: 'background-color 0.15s'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.backgroundColor = '#E5E7EB'}
+                      onMouseLeave={e => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                    >
+                      Continuar
+                    </button>
+                  </div>
+
+                  {/* PDF Download / WhatsApp PDF */}
                   <button
                     disabled={sendingWhatsApp}
                     onClick={() => sendPdfViaWhatsApp(lastCreatedSale)}
                     style={{
-                      width: '100%',
-                      padding: '12px',
+                      width: '100%', padding: '12px',
                       backgroundColor: sendingWhatsApp ? '#88d4a0' : '#25D366',
-                      color: '#FFF',
-                      border: 'none',
-                      fontSize: '13px',
-                      fontWeight: 600,
+                      color: '#FFF', border: 'none',
+                      fontSize: '13px', fontWeight: 700,
                       cursor: sendingWhatsApp ? 'wait' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      borderRadius: '0px',
-                      transition: 'background-color 0.15s'
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                      borderRadius: '8px', transition: 'background-color 0.15s'
                     }}
                     onMouseEnter={e => { if (!sendingWhatsApp) e.currentTarget.style.backgroundColor = '#1EBE5A'; }}
                     onMouseLeave={e => { if (!sendingWhatsApp) e.currentTarget.style.backgroundColor = '#25D366'; }}
@@ -1967,9 +2352,10 @@ export default function POS() {
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
                       <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                     </svg>
-                    {sendingWhatsApp ? 'Generando PDF...' : 'Enviar Comprobante PDF por WhatsApp'}
+                    {sendingWhatsApp ? 'Generando PDF...' : 'Descargar / Enviar PDF del Comprobante'}
                   </button>
-                )}
+                </div>
+
               </div>
             </div>
           </div>
@@ -1979,14 +2365,52 @@ export default function POS() {
       {/* CSS de impresión — oculta todo excepto el comprobante */}
       <style>{`
         @media print {
+          /* Ocultar todo por defecto */
           body * { visibility: hidden; }
+
+          /* Mostrar solo el contenedor de impresión activo */
           .invoice-print-container, .invoice-print-container *,
-          .ticket-print-container, .ticket-print-container * { visibility: visible; }
-          .invoice-print-container, .ticket-print-container {
-            position: absolute; left: 0; top: 0; width: 100%; height: auto; background: #FFF;
+          .ticket-print-container, .ticket-print-container * {
+            visibility: visible;
           }
+
+          /* Posicionar el contenedor de impresión en la página */
+          .invoice-print-container, .ticket-print-container {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            background: #FFF !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            z-index: 99999 !important;
+          }
+
+          /* Ocultar botones y paneles no-print */
+          .no-print,
           .invoice-print-container button,
-          .ticket-print-container button { display: none !important; }
+          .ticket-print-container button,
+          .invoice-print-container input,
+          .ticket-print-container input {
+            display: none !important;
+          }
+
+          /* Ocultar sidebar, header y chrome del admin layout */
+          nav, aside, header,
+          [class*="sidebar"], [class*="Sidebar"],
+          [class*="admin-header"], [class*="AdminHeader"],
+          [class*="topbar"], [class*="Topbar"] {
+            display: none !important;
+            visibility: hidden !important;
+          }
+
+          /* Resetear body y html */
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+          }
         }
       `}
       </style>

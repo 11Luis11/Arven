@@ -21,6 +21,8 @@ const CashRegister = lazy(() => import('./pages/admin/CashRegister'));
 const Reports = lazy(() => import('./pages/admin/Reports'));
 const Config = lazy(() => import('./pages/admin/Config'));
 const Logs = lazy(() => import('./pages/admin/Logs'));
+const CostCalculator = lazy(() => import('./pages/admin/CostCalculator'));
+const TaxDeclaration = lazy(() => import('./pages/admin/TaxDeclaration'));
 
 // Fallback de carga para secciones lazy
 function LazyFallback() {
@@ -364,6 +366,8 @@ export default function App() {
                     <Route path="reports" element={<Reports />} />
                     <Route path="logs" element={<Logs />} />
                     <Route path="config" element={<Config />} />
+                    <Route path="calculator" element={<CostCalculator />} />
+                    <Route path="declarations" element={<TaxDeclaration />} />
                     <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
                   </Routes>
                 </AdminLayout>

@@ -33,6 +33,7 @@ export default function Reports() {
   const [replacementColorHex, setReplacementColorHex] = useState('');
   const [replacementSize, setReplacementSize] = useState('');
   const [exchangeLoading, setExchangeLoading] = useState(false);
+  const [whatsappNumber, setWhatsappNumber] = useState('');
 
   const loadData = async () => {
     const s = await DataService.getSales();
@@ -70,6 +71,18 @@ export default function Reports() {
       return parts[0] + '.' + parts[1] + '0';
     }
     return parts[0] + '.' + parts[1].substring(0, 2);
+  };
+
+  const handleShareWhatsApp = (sale, items, phone) => {
+    let cleanPhone = phone.replace(/[^0-9]/g, '');
+    if (cleanPhone.length === 9 && cleanPhone.startsWith('9')) {
+      cleanPhone = '51' + cleanPhone;
+    }
+    const storeName = config?.businessName || config?.storeName || 'ARVEN';
+    const itemsText = items.map(item => `• ${item.quantity}x ${item.product_name} - S/. ${formatNoRound(item.total_price)}`).join('\n');
+    const text = `🧾 *${storeName.toUpperCase()}*\n*${sale.document_type || 'Boleta'} N° ${sale.invoice_number}*\n\n📅 Fecha: ${new Date(sale.created_at).toLocaleDateString('es-PE')}\n👤 Cliente: ${sale.customer_name}\n💳 Pago: ${sale.payment_method}\n\n*Detalle de compra:*\n${itemsText}\n\n*Total: S/. ${formatNoRound(sale.total_amount)}*\n\n¡Gracias por tu preferencia! ¡Te esperamos pronto! 🤎`;
+    const encodedMsg = encodeURIComponent(text);
+    window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMsg}`, '_blank');
   };
 
   const getFilteredSales = () => {
@@ -737,138 +750,144 @@ export default function Reports() {
           }}>
             <div style={{
               backgroundColor: '#FFF',
-              width: '320px',
+              width: '340px',
               maxHeight: '90vh',
               overflowY: 'auto',
-              fontFamily: "'Courier New', Courier, monospace",
+              fontFamily: "'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
               fontSize: '12px',
-              padding: '24px 20px',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-              border: '1px dashed #ccc'
+              padding: '28px 24px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+              border: '1px solid #E5E7EB',
+              borderRadius: '8px'
             }}>
-              {/* Cabecera Ticket */}
-              <div style={{ textAlign: 'center', marginBottom: '12px' }}>
-                {config?.storeLogoUrl && (
-                  <img src={config.storeLogoUrl} alt="Logo" style={{ maxHeight: '60px', maxWidth: '120px', objectFit: 'contain', marginBottom: '8px' }} />
+              {/* Header */}
+              <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                {config?.storeLogoUrl ? (
+                  <img src={config.storeLogoUrl} alt="Logo" style={{ maxHeight: '55px', maxWidth: '200px', objectFit: 'contain', marginBottom: '10px' }} />
+                ) : (
+                  <div style={{ fontSize: '18px', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#111', marginBottom: '10px' }}>
+                    {config?.businessName || config?.storeName || 'ARVEN'}
+                  </div>
                 )}
-                <div style={{ fontSize: '16px', fontWeight: 700, letterSpacing: '0.05em' }}>{(config?.businessName || config?.storeName || 'CARRILLO STORE').toUpperCase()}</div>
-                <div style={{ fontSize: '10px', color: '#666', marginTop: '2px' }}>{config?.fiscalAddress || 'Av. Larco 123, Miraflores'}</div>
-                {config?.ticketPhone && <div style={{ fontSize: '10px', color: '#666' }}>Tel: {config.ticketPhone}</div>}
+                <div style={{ fontSize: '13px', fontWeight: 800, color: '#111', textTransform: 'uppercase', letterSpacing: '0.04em' }}>TICKET DE VENTA</div>
+                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '2px', fontWeight: 600 }}>RUC: {config?.ruc || '20601234567'}</div>
               </div>
 
-              {/* Línea divisoria */}
-              <div style={{ borderTop: '1px dashed #333', margin: '8px 0' }} />
-
-              {/* Info del ticket */}
-              <div style={{ marginBottom: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>TICKET:</span>
-                  <span style={{ fontWeight: 700 }}>{selectedSale.invoice_number}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>FECHA:</span>
-                  <span>{saleDate.toLocaleDateString()}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>HORA:</span>
-                  <span>{saleDate.toLocaleTimeString()}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>CLIENTE:</span>
-                  <span>{selectedSale.customer_name}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>PAGO:</span>
-                  <span>{selectedSale.payment_method}</span>
-                </div>
+              {/* Date & Time Icons */}
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', fontSize: '10px', color: '#4B5563', backgroundColor: '#F9FAFB', padding: '6px 12px', borderRadius: '4px', border: '1px solid #E5E7EB', marginBottom: '12px' }}>
+                <span>📅 {saleDate.toLocaleDateString('es-PE')}</span>
+                <span>🕐 {saleDate.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
               </div>
 
-              {/* Línea divisoria */}
-              <div style={{ borderTop: '1px dashed #333', margin: '8px 0' }} />
+              <div style={{ textAlign: 'center', fontSize: '12px', fontWeight: 700, color: '#C5A880', letterSpacing: '0.05em', marginBottom: '14px' }}>
+                {selectedSale.invoice_number}
+              </div>
 
-              {/* Header de items */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, marginBottom: '4px', fontSize: '11px' }}>
-                <span style={{ flex: 2 }}>PRODUCTO</span>
-                <span style={{ flex: 0.5, textAlign: 'center' }}>CTD</span>
-                <span style={{ flex: 1, textAlign: 'right' }}>P.U.</span>
+              <div style={{ borderTop: '1px dashed #D1D5DB', margin: '10px 0' }} />
+
+              {/* Customer info (if exists) */}
+              <div style={{ fontSize: '11px', color: '#4B5563', lineHeight: '1.4', marginBottom: '10px' }}>
+                <div><strong>Cliente:</strong> {selectedSale.customer_name}</div>
+                {selectedSale.customer_document && <div><strong>Doc:</strong> {selectedSale.customer_document}</div>}
+              </div>
+
+              <div style={{ borderTop: '1px dashed #D1D5DB', margin: '10px 0' }} />
+
+              {/* Table Headers */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '10px', color: '#374151', textTransform: 'uppercase', marginBottom: '6px' }}>
+                <span style={{ flex: 0.5, textAlign: 'center' }}>CANT.</span>
+                <span style={{ flex: 2, textAlign: 'left' }}>DESCRIPCIÓN</span>
                 <span style={{ flex: 1, textAlign: 'right' }}>TOTAL</span>
               </div>
 
-              <div style={{ borderTop: '1px solid #ddd', margin: '2px 0 4px 0' }} />
+              <div style={{ borderTop: '1px solid #E5E7EB', marginBottom: '8px' }} />
 
-              {/* Items del ticket */}
-              {items.map(item => {
-                const isExchangedItem = item.product_name.includes('[CAMBIO]') || item.product_name.includes('CAMBIO');
-                return (
-                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '11px', color: isExchangedItem ? '#7C3AED' : 'inherit', fontWeight: isExchangedItem ? 700 : 400 }}>
-                    <span style={{ flex: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.product_name}</span>
-                    <span style={{ flex: 0.5, textAlign: 'center' }}>{item.quantity}</span>
-                    <span style={{ flex: 1, textAlign: 'right' }}>{formatNoRound(item.unit_price)}</span>
-                    <span style={{ flex: 1, textAlign: 'right' }}>{formatNoRound(item.total_price)}</span>
-                  </div>
-                );
-              })}
+              {/* Items List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
+                {items.map(item => {
+                  const isExchangedItem = item.product_name.includes('[CAMBIO]') || item.product_name.includes('CAMBIO');
+                  return (
+                    <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', alignItems: 'center', color: isExchangedItem ? '#7C3AED' : '#111' }}>
+                      <span style={{ flex: 0.5, textAlign: 'center', fontWeight: 600 }}>{item.quantity}</span>
+                      <span style={{ flex: 2, textAlign: 'left', fontWeight: isExchangedItem ? 'bold' : 'normal' }}>
+                        {item.product_name}
+                      </span>
+                      <span style={{ flex: 1, textAlign: 'right', fontWeight: 600 }}>S/. {formatNoRound(item.total_price)}</span>
+                    </div>
+                  );
+                })}
+              </div>
 
-              {/* Línea divisoria */}
-              <div style={{ borderTop: '1px dashed #333', margin: '8px 0' }} />
+              <div style={{ borderTop: '1px dashed #D1D5DB', margin: '10px 0' }} />
 
-              {/* Totales */}
-              <div style={{ marginBottom: '4px' }}>
+              {/* Totals Box */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: '#4B5563', marginBottom: '14px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>SUBTOTAL:</span>
                   <span>S/. {formatNoRound(selectedSale.total_amount + selectedSale.discount_amount)}</span>
                 </div>
                 {selectedSale.discount_amount > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e02424' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#EF4444' }}>
                     <span>DESCUENTO:</span>
                     <span>- S/. {formatNoRound(selectedSale.discount_amount)}</span>
                   </div>
                 )}
-                <div style={{ borderTop: '1px solid #333', margin: '4px 0' }} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '15px' }}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  backgroundColor: '#111',
+                  color: '#C5A880',
+                  padding: '6px 10px',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  marginTop: '4px'
+                }}>
                   <span>TOTAL:</span>
                   <span>S/. {formatNoRound(selectedSale.total_amount)}</span>
                 </div>
               </div>
 
-              {/* Línea divisoria */}
-              <div style={{ borderTop: '1px dashed #333', margin: '8px 0' }} />
+              <div style={{ borderTop: '1px dashed #D1D5DB', margin: '10px 0' }} />
 
-              {/* Pie de ticket */}
-              <div style={{ textAlign: 'center', fontSize: '10px', color: '#666' }}>
-                <div>¡Gracias por tu compra!</div>
-                <div>Cambios hasta 7 días con ticket</div>
-                <div style={{ marginTop: '6px' }}>www.carrillostore.com</div>
+              {/* Forma de pago */}
+              <div style={{ textAlign: 'center', fontSize: '11px', color: '#4B5563', marginBottom: '12px' }}>
+                <strong>Forma de pago:</strong> {selectedSale.payment_method}
               </div>
 
-              {/* Línea divisoria */}
-              <div style={{ borderTop: '1px dashed #333', margin: '12px 0' }} />
+              <div style={{ textAlign: 'center', fontSize: '10px', color: '#6B7280', margin: '12px 0', fontStyle: 'italic' }}>
+                ¡Gracias por tu compra! ♡
+              </div>
 
-              {/* Estado */}
-              {selectedSale.status === 'voided' && (
-                <div style={{ textAlign: 'center', fontWeight: 700, color: '#e02424', fontSize: '14px', border: '2px solid #e02424', padding: '6px', margin: '8px 0' }}>
-                  *** ANULADO ***
-                </div>
-              )}
-              {selectedSale.status === 'exchanged' && (
-                <div style={{ textAlign: 'center', fontWeight: 700, color: '#7C3AED', fontSize: '14px', border: '2px solid #7C3AED', padding: '6px', margin: '8px 0' }}>
-                  *** CAMBIADO ***
-                </div>
-              )}
+              {/* Social networks dark bar */}
+              <div style={{
+                backgroundColor: '#111',
+                color: '#FFF',
+                padding: '10px',
+                textAlign: 'center',
+                fontSize: '9px',
+                borderRadius: '4px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '2px',
+                marginBottom: '16px'
+              }}>
+                <div>Instagram: @arven.brands | Cel: {config?.footer?.whatsapp || '+51 987 654 321'}</div>
+                <div style={{ letterSpacing: '0.08em', fontWeight: 700, marginTop: '2px' }}>WWW.ARVEN.COM</div>
+              </div>
 
-              {/* Botones de acción */}
-              <div style={{ display: 'flex', gap: '8px', marginTop: '16px', fontFamily: 'inherit' }}>
-                <button 
+              {/* Action Buttons */}
+              <div className="no-print" style={{ display: 'flex', gap: '8px' }}>
+                <button
                   onClick={() => window.print()}
-                  className="btn-primary" 
-                  style={{ flex: 1, display: 'flex', gap: '6px', justifyContent: 'center', borderRadius: '0px', fontSize: '12px', fontFamily: 'inherit', padding: '10px' }}
+                  className="btn-primary"
+                  style={{ flex: 1, display: 'flex', gap: '6px', justifyContent: 'center', borderRadius: '4px', fontSize: '12px', padding: '10px' }}
                 >
                   <Printer size={14} /> Imprimir
                 </button>
-                <button 
+                <button
                   onClick={() => { setShowTicketModal(false); setSelectedSale(null); }}
-                  className="btn-secondary" 
-                  style={{ flex: 1, borderRadius: '0px', fontSize: '12px', fontFamily: 'inherit', padding: '10px' }}
+                  className="btn-secondary"
+                  style={{ flex: 1, borderRadius: '4px', fontSize: '12px', padding: '10px' }}
                 >
                   Cerrar
                 </button>
@@ -934,9 +953,10 @@ export default function Reports() {
           }}>
             <div style={{
               backgroundColor: '#FFF',
-              padding: '32px',
-              border: '2px solid #1a1a2e',
-              maxWidth: '580px',
+              padding: '36px 32px',
+              border: '1px solid #E5E7EB',
+              borderRadius: '12px',
+              maxWidth: '600px',
               width: '100%',
               maxHeight: '90vh',
               overflowY: 'auto',
@@ -944,99 +964,118 @@ export default function Reports() {
               flexDirection: 'column',
               gap: '0',
               boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
-              fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+              fontFamily: "'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
             }}>
               
               {/* === CABECERA SUNAT: Datos del Emisor === */}
               <div style={{ 
                 display: 'flex', 
                 gap: '20px', 
-                paddingBottom: '16px', 
-                borderBottom: '2px solid #1a1a2e',
-                marginBottom: '16px'
+                paddingBottom: '20px', 
+                borderBottom: '2px solid #111',
+                marginBottom: '20px',
+                alignItems: 'center',
+                justifyContent: 'space-between'
               }}>
                 {/* Logo / Nombre Empresa */}
                 <div style={{ flex: 1, display: 'flex', gap: '14px', alignItems: 'center' }}>
-                  {config?.storeLogoUrl && (
-                    <img src={config.storeLogoUrl} alt="Logo" style={{ maxHeight: '60px', maxWidth: '120px', objectFit: 'contain' }} />
+                  {config?.storeLogoUrl ? (
+                    <img src={config.storeLogoUrl} alt="Logo" style={{ maxHeight: '55px', maxWidth: '200px', objectFit: 'contain' }} />
+                  ) : (
+                    <div style={{ fontSize: '20px', fontWeight: 800, color: '#111', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                      {config?.businessName || config?.storeName || 'ARVEN'}
+                    </div>
                   )}
-                  <div>
-                    <div style={{ fontSize: '18px', fontWeight: 800, color: '#1a1a2e', letterSpacing: '0.03em' }}>
-                      {config?.businessName || config?.storeName || 'CARRILLO STORE S.A.C.'}
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#555', marginTop: '4px', lineHeight: 1.5 }}>
-                      {config?.fiscalAddress || 'Av. Larco 123, Miraflores, Lima'}<br />
-                      {config?.ticketPhone && <>Tel: {config.ticketPhone}<br /></>}
-                      {config?.ticketEmail && <>Email: {config.ticketEmail}</>}
-                    </div>
-                  </div>
                 </div>
 
                 {/* Cuadro del Comprobante */}
                 <div style={{ 
-                  border: '2px solid #c0392b', 
-                  padding: '12px 16px', 
+                  border: '1px solid #111', 
+                  padding: '12px 18px', 
                   textAlign: 'center',
-                  minWidth: '200px',
+                  minWidth: '220px',
+                  backgroundColor: '#FFF',
                   display: 'flex',
                   flexDirection: 'column',
-                  justifyContent: 'center',
                   gap: '4px'
                 }}>
-                  <div style={{ fontSize: '10px', fontWeight: 600, color: '#c0392b', letterSpacing: '0.05em' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 700, color: '#6B7280', letterSpacing: '0.05em' }}>
                     R.U.C. N° {config?.ruc || '20601234567'}
                   </div>
-                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#c0392b' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 800, color: '#111', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                     {selectedSale.invoice_number.startsWith('FFF1') ? 'FACTURA ELECTRÓNICA' : 'BOLETA DE VENTA ELECTRÓNICA'}
                   </div>
-                  <div style={{ fontSize: '15px', fontWeight: 800, color: '#c0392b' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 800, color: '#C5A880', letterSpacing: '0.04em' }}>
                     N° {selectedSale.invoice_number}
                   </div>
                 </div>
               </div>
 
+              {/* Emisor Fiscal details */}
+              <div style={{ fontSize: '11px', color: '#6B7280', marginBottom: '20px', lineHeight: '1.4' }}>
+                <div><strong>Domicilio Fiscal:</strong> {config?.fiscalAddress || 'Av. Larco 123, Miraflores, Lima'}</div>
+                <div><strong>Contacto:</strong> {config?.ticketPhone ? `Cel: ${config.ticketPhone}` : ''} {config?.ticketEmail ? `| Email: ${config.ticketEmail}` : ''}</div>
+              </div>
+
               {/* === DATOS DEL ADQUIRIENTE === */}
-              <div style={{ 
-                border: '1px solid #ddd', 
-                padding: '12px 14px', 
-                fontSize: '12px', 
-                marginBottom: '16px',
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '6px 20px',
-                backgroundColor: '#FAFAFA'
+              <div style={{
+                border: '1px solid #E5E7EB',
+                borderRadius: '8px',
+                padding: '14px 16px',
+                backgroundColor: '#FFF',
+                marginBottom: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px'
               }}>
-                <div><strong>Adquiriente:</strong> {selectedSale.customer_name}</div>
-                <div><strong>Doc. Identidad:</strong> {selectedSale.customer_document}</div>
-                <div><strong>Fecha de Emisión:</strong> {saleDate.toLocaleDateString()}</div>
-                <div><strong>Hora:</strong> {saleDate.toLocaleTimeString()}</div>
-                <div><strong>Moneda:</strong> SOLES (PEN)</div>
-                <div><strong>Forma de Pago:</strong> {selectedSale.payment_method}</div>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '50%',
+                  backgroundColor: '#F3F4F6',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#6B7280'
+                }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                </div>
+                <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px', fontSize: '12px' }}>
+                  <div><strong>Adquiriente:</strong> {selectedSale.customer_name}</div>
+                  <div><strong>Doc. Identidad:</strong> {selectedSale.customer_document}</div>
+                  <div><strong>Fecha de Emisión:</strong> {saleDate.toLocaleDateString()}</div>
+                  <div><strong>Hora de Emisión:</strong> {saleDate.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: true })}</div>
+                  <div><strong>Moneda:</strong> SOLES (PEN)</div>
+                  <div><strong>Forma de Pago:</strong> {selectedSale.payment_method}</div>
+                </div>
               </div>
 
               {/* === TABLA DE ITEMS CON DESGLOSE IGV === */}
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left', marginBottom: '16px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left', marginBottom: '20px' }}>
                 <thead>
-                  <tr style={{ backgroundColor: '#1a1a2e', color: '#FFF' }}>
-                    <th style={{ padding: '8px 6px', fontWeight: 600 }}>Cantidad</th>
-                    <th style={{ padding: '8px 6px', fontWeight: 600 }}>Unidad Medida</th>
-                    <th style={{ padding: '8px 6px', fontWeight: 600 }}>Código</th>
-                    <th style={{ padding: '8px 6px', fontWeight: 600 }}>Descripción</th>
-                    <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 600 }}>Valor Unitario</th>
+                  <tr style={{ backgroundColor: '#111', color: '#FFF' }}>
+                    <th style={{ padding: '10px 8px', fontWeight: 600, textAlign: 'center', width: '60px' }}>CANT.</th>
+                    <th style={{ padding: '10px 8px', fontWeight: 600, width: '60px' }}>UNIDAD</th>
+                    <th style={{ padding: '10px 8px', fontWeight: 600, width: '100px' }}>CÓDIGO</th>
+                    <th style={{ padding: '10px 8px', fontWeight: 600 }}>DESCRIPCIÓN</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 600, width: '110px' }}>VALOR UNIT.</th>
                   </tr>
                 </thead>
                 <tbody>
                   {itemsWithTax.map((item, idx) => {
                     const isExchangedItem = item.product_name.includes('[CAMBIO]') || item.product_name.includes('CAMBIO');
                     return (
-                      <tr key={item.id} style={{ borderBottom: '1px solid #eee', backgroundColor: isExchangedItem ? '#F5F3FF' : (idx % 2 === 0 ? '#FFF' : '#F9F9FB') }}>
-                        <td style={{ padding: '8px 6px' }}>{item.quantity}</td>
-                        <td style={{ padding: '8px 6px' }}>NIU</td>
-                        <td style={{ padding: '8px 6px' }}>{item.sku}</td>
-                        <td style={{ padding: '8px 6px', fontWeight: isExchangedItem ? 'bold' : 'normal', color: isExchangedItem ? '#7C3AED' : 'inherit' }}>
+                      <tr key={item.id} style={{ borderBottom: '1px solid #eee', backgroundColor: isExchangedItem ? '#F5F3FF' : '#FFF' }}>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 600 }}>{item.quantity}</td>
+                        <td style={{ padding: '10px 8px', color: '#4B5563' }}>NIU</td>
+                        <td style={{ padding: '10px 8px', color: '#6B7280' }}>{item.sku || 'N/A'}</td>
+                        <td style={{ padding: '10px 8px', fontWeight: isExchangedItem ? 'bold' : 'normal', color: isExchangedItem ? '#7C3AED' : '#111' }}>
                           {item.product_name}
                         </td>
-                        <td style={{ padding: '8px 6px', textAlign: 'right' }}>S/. {formatNoRound(item.valorVentaUnitario)}</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 600 }}>S/. {formatNoRound(item.valorVentaUnitario)}</td>
                       </tr>
                     );
                   })}
@@ -1047,29 +1086,40 @@ export default function Reports() {
               <div style={{ 
                 display: 'flex', 
                 justifyContent: 'flex-end',
-                marginBottom: '16px'
+                marginBottom: '20px'
               }}>
                 <div style={{ 
-                  width: '280px', 
-                  border: '1px solid #ddd',
-                  fontSize: '12px'
+                  width: '240px', 
+                  fontSize: '11px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px'
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderBottom: '1px solid #eee' }}>
-                    <span>Op. Gravada (Base):</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#4B5563' }}>
+                    <span>OP. GRAVADA:</span>
                     <span>S/. {formatNoRound(totalBaseGravada)}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderBottom: '1px solid #eee', color: '#c0392b', fontWeight: 600 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#4B5563' }}>
                     <span>I.G.V. (18%):</span>
                     <span>S/. {formatNoRound(totalIGV)}</span>
                   </div>
                   {descuento > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderBottom: '1px solid #eee', color: '#e67e22' }}>
-                      <span>Descuento:</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#EF4444' }}>
+                      <span>DESCUENTO:</span>
                       <span>- S/. {formatNoRound(descuento)}</span>
                     </div>
                   )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', fontWeight: 700, fontSize: '15px', backgroundColor: '#1a1a2e', color: '#FFF' }}>
-                    <span>IMPORTE TOTAL:</span>
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    fontWeight: 700, 
+                    fontSize: '13px', 
+                    backgroundColor: '#111', 
+                    color: '#C5A880',
+                    padding: '8px 12px',
+                    marginTop: '4px'
+                  }}>
+                    <span>TOTAL:</span>
                     <span>S/. {formatNoRound(totalImporte)}</span>
                   </div>
                 </div>
@@ -1078,49 +1128,58 @@ export default function Reports() {
               {/* === ESTADO DEL COMPROBANTE === */}
               <div style={{ 
                 textAlign: 'center', 
-                padding: '8px',
-                marginBottom: '12px',
-                border: `2px solid ${selectedSale.status === 'voided' ? '#e02424' : selectedSale.status === 'exchanged' ? '#7C3AED' : '#059669'}`,
-                color: selectedSale.status === 'voided' ? '#e02424' : selectedSale.status === 'exchanged' ? '#7C3AED' : '#059669',
+                padding: '6px 12px',
+                marginBottom: '20px',
+                border: `1px solid ${selectedSale.status === 'voided' ? '#EF4444' : selectedSale.status === 'exchanged' ? '#7C3AED' : '#10B981'}`,
+                color: selectedSale.status === 'voided' ? '#EF4444' : selectedSale.status === 'exchanged' ? '#7C3AED' : '#10B981',
                 fontWeight: 700,
-                fontSize: '13px',
-                letterSpacing: '0.05em'
+                fontSize: '12px',
+                letterSpacing: '0.04em',
+                borderRadius: '4px'
               }}>
                 {selectedSale.status === 'voided' ? '✗ COMPROBANTE ANULADO' : selectedSale.status === 'exchanged' ? '↻ COMPROBANTE CON CAMBIO' : '✓ ACEPTADA POR SUNAT'}
               </div>
 
-              {/* === QR + Pie legal === */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', borderTop: '1px solid #ddd', paddingTop: '14px', marginBottom: '16px' }}>
-                {/* QR Mock SVG */}
-                <svg width="60" height="60" viewBox="0 0 100 100" fill="none" stroke="#111" strokeWidth="4">
-                  <rect x="10" y="10" width="80" height="80" strokeWidth="2" />
-                  <rect x="20" y="20" width="20" height="20" />
-                  <rect x="60" y="20" width="20" height="20" />
-                  <rect x="20" y="60" width="20" height="20" />
-                  <line x1="50" y1="20" x2="50" y2="80" strokeWidth="2" strokeDasharray="4 4" />
-                  <line x1="20" y1="50" x2="80" y2="50" strokeWidth="2" strokeDasharray="4 4" />
-                </svg>
-                <div style={{ fontSize: '9px', color: '#888', lineHeight: 1.5 }}>
-                  Representación impresa de la {selectedSale.invoice_number.startsWith('FFF1') ? 'Factura' : 'Boleta de Venta'} Electrónica.
+              {/* === Pie legal === */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', borderTop: '1px solid #E5E7EB', paddingTop: '16px', marginBottom: '20px' }}>
+                <div style={{ fontSize: '9px', color: '#6B7280', lineHeight: 1.5 }}>
+                  Representación impresa de la {selectedSale.invoice_number.startsWith('FFF1') ? 'Factura' : 'Boleta de Venta'} Electrónica.<br />
                   Consulte este comprobante en: <strong>carrillostore.com/consultas</strong><br />
                   Autorizado mediante resolución SUNAT N° 034-2020/SUNAT.<br />
                   Hash: {btoa(selectedSale.id).slice(0, 24)}
                 </div>
               </div>
 
+              {/* Brand Dark Bar */}
+              <div style={{
+                backgroundColor: '#111',
+                color: '#FFF',
+                padding: '12px',
+                textAlign: 'center',
+                fontSize: '9px',
+                borderRadius: '6px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '2px',
+                marginBottom: '20px'
+              }}>
+                <div>Instagram: @arven.brands | Soporte WhatsApp: {config?.footer?.whatsapp || '+51 987 654 321'}</div>
+                <div style={{ letterSpacing: '0.08em', fontWeight: 700, marginTop: '2px' }}>WWW.ARVEN.COM</div>
+              </div>
+
               {/* === Botones de Acción === */}
-              <div style={{ display: 'flex', gap: '10px' }}>
+              <div className="no-print" style={{ display: 'flex', gap: '10px' }}>
                 <button 
                   onClick={() => window.print()}
                   className="btn-primary" 
-                  style={{ flex: 1, display: 'flex', gap: '8px', justifyContent: 'center', borderRadius: '0px', fontSize: '13px', padding: '12px' }}
+                  style={{ flex: 1, display: 'flex', gap: '8px', justifyContent: 'center', borderRadius: '4px', fontSize: '13px', padding: '12px' }}
                 >
-                  <Printer size={15} /> Imprimir Comprobante
+                  <Printer size={15} /> Imprimir
                 </button>
                 <button 
                   onClick={() => { setShowInvoiceModal(false); setSelectedSale(null); }}
                   className="btn-secondary" 
-                  style={{ flex: 1, borderRadius: '0px', fontSize: '13px', padding: '12px' }}
+                  style={{ flex: 1, borderRadius: '4px', fontSize: '13px', padding: '12px' }}
                 >
                   Cerrar
                 </button>
@@ -1142,15 +1201,20 @@ export default function Reports() {
             visibility: visible;
           }
           .invoice-print-container, .ticket-print-container {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: auto;
-            background: #FFF;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            background: #FFF !important;
+            box-shadow: none !important;
+            border: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
           }
           .invoice-print-container button,
-          .ticket-print-container button {
+          .ticket-print-container button,
+          .no-print {
             display: none !important;
           }
         }

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, ShoppingBag, Package, ClipboardList, 
-  Users, Wallet, TrendingUp, Settings, LogOut, Circle, Menu, X 
+  Users, Wallet, TrendingUp, Settings, LogOut, Circle, Menu, X, Calculator, FileText
 } from 'lucide-react';
 import { DataService, subscribeToRealtime } from '../services/dataService';
 import { applyFavicon } from '../utils/favicon';
@@ -56,6 +56,8 @@ export default function AdminLayout({ children }) {
     { name: 'Reportes', path: '/admin/reports', icon: TrendingUp, roles: ['admin', 'viewer'] },
     { name: 'Log de Acciones', path: '/admin/logs', icon: ClipboardList, roles: ['admin'] },
     { name: 'Configuración', path: '/admin/config', icon: Settings, roles: ['admin'] },
+    { name: 'Costos Fabricación', path: '/admin/calculator', icon: Calculator, roles: ['admin'] },
+    { name: 'Declaración Venta', path: '/admin/declarations', icon: FileText, roles: ['admin'] },
   ];
 
   const navItems = allNavItems.filter(item => item.roles.includes(currentUser.role));
