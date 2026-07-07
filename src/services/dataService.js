@@ -65,6 +65,17 @@ function getCached(key) {
 function setCache(key, data) {
   _cache[key] = { data, ts: Date.now() };
 }
+// Recalcula el stock TOTAL de un producto a partir del stock por color/variante.
+// Si el producto no maneja colores, respeta el stock manual ingresado.
+// Esta es la ÚNICA fuente de verdad para el stock total en toda la app.
+function normalizeStock(product) {
+  if (Array.isArray(product.colors) && product.colors.length > 0) {
+    const realStock = product.colors.reduce((sum, c) => sum + (parseInt(c.stock) || 0), 0);
+    return { ...product, stock: realStock };
+  }
+  return { ...product, stock: parseInt(product.stock) || 0 };
+}
+
 function invalidateCache(prefix) {
   if (prefix) {
     Object.keys(_cache).forEach(k => { if (k.startsWith(prefix)) delete _cache[k]; });
@@ -218,7 +229,15 @@ export const DataService = {
     if (supabase) {
       try {
         const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: false });
-        if (!error && data) { setCache('products', data); return data; }
+        if (!error && data) {
+          // Normaliza el stock: si el producto tiene colores/variantes, el stock TOTAL
+          // siempre debe ser la suma exacta del stock de cada color. Esto evita que
+          // el número mostrado en Inventario/Productos/POS quede desincronizado del
+          // stock real por variante (fuente de la verdad).
+          const normalized = data.map(p => normalizeStock(p));
+          setCache('products', normalized);
+          return normalized;
+        }
       } catch (e) {
         console.error('Error al obtener productos de Supabase:', e);
       }
@@ -238,24 +257,28 @@ export const DataService = {
 
     if (supabase) {
       try {
+        // El stock total SIEMPRE se recalcula a partir del stock por color/variante
+        // cuando el producto tiene colores definidos. Así ninguna pantalla puede
+        // guardar un stock total "manual" que no coincida con la suma real.
+        const normalizedProduct = normalizeStock(updatedProduct);
         const payload = {
-          id: updatedProduct.id,
-          category_id: updatedProduct.category_id,
-          name: updatedProduct.name,
-          sku: updatedProduct.sku,
-          description: updatedProduct.description,
-          price: parseFloat(updatedProduct.price) || 0,
-          offer_price: updatedProduct.offer_price !== null ? parseFloat(updatedProduct.offer_price) : null,
-          wholesale_price: updatedProduct.wholesale_price !== null ? parseFloat(updatedProduct.wholesale_price) : null,
-          wholesale_min_qty: parseInt(updatedProduct.wholesale_min_qty) || 6,
-          wholesale_tiers: updatedProduct.wholesale_tiers || [],
-          stock: parseInt(updatedProduct.stock) || 0,
-          image_url: updatedProduct.image_url,
-          images: updatedProduct.images,
-          colors: updatedProduct.colors || [],
-          sizes: updatedProduct.sizes || [],
-          active: updatedProduct.active,
-          created_at: updatedProduct.created_at,
+          id: normalizedProduct.id,
+          category_id: normalizedProduct.category_id,
+          name: normalizedProduct.name,
+          sku: normalizedProduct.sku,
+          description: normalizedProduct.description,
+          price: parseFloat(normalizedProduct.price) || 0,
+          offer_price: normalizedProduct.offer_price !== null ? parseFloat(normalizedProduct.offer_price) : null,
+          wholesale_price: normalizedProduct.wholesale_price !== null ? parseFloat(normalizedProduct.wholesale_price) : null,
+          wholesale_min_qty: parseInt(normalizedProduct.wholesale_min_qty) || 6,
+          wholesale_tiers: normalizedProduct.wholesale_tiers || [],
+          stock: normalizedProduct.stock,
+          image_url: normalizedProduct.image_url,
+          images: normalizedProduct.images,
+          colors: normalizedProduct.colors || [],
+          sizes: normalizedProduct.sizes || [],
+          active: normalizedProduct.active,
+          created_at: normalizedProduct.created_at,
           updated_at: new Date().toISOString()
         };
         const { error } = await supabase.from('products').upsert(payload);

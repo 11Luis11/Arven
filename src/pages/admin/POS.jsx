@@ -467,7 +467,7 @@ export default function POS() {
     const address = config?.fiscalAddress || 'Dirección Fiscal';
     const phone = config?.ticketPhone || '';
     const email = config?.ticketEmail || '';
-    const ruc = config?.ruc || '20601234567';
+    const ruc = config?.ruc || 'PENDIENTE (configura tu RUC en Ajustes)';
     const saleDate = new Date(sale.created_at);
     const isFactura = sale.document_type === 'Factura';
 
@@ -1990,7 +1990,7 @@ export default function POS() {
                   </div>
                 )}
                 <div style={{ fontSize: '13px', fontWeight: 800, color: '#111', textTransform: 'uppercase', letterSpacing: '0.04em' }}>TICKET DE VENTA</div>
-                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '2px', fontWeight: 600 }}>RUC: {config?.ruc || '20601234567'}</div>
+                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '2px', fontWeight: 600 }}>RUC: {config?.ruc || 'Pendiente de configurar en Ajustes'}</div>
               </div>
 
               {/* Date & Time Icons */}
@@ -2086,8 +2086,10 @@ export default function POS() {
                 gap: '2px',
                 marginBottom: '16px'
               }}>
-                <div>Instagram: @arven.brands | Cel: {config?.footer?.whatsapp || '+51 987 654 321'}</div>
-                <div style={{ letterSpacing: '0.08em', fontWeight: 700, marginTop: '2px' }}>WWW.ARVEN.COM</div>
+                {config?.footer?.whatsapp && <div>Cel: {config.footer.whatsapp}</div>}
+                <div style={{ letterSpacing: '0.08em', fontWeight: 700, marginTop: '2px' }}>
+                  {(config?.storeName || config?.businessName || 'TU TIENDA').toUpperCase()}
+                </div>
               </div>
 
               {/* Action Buttons */}
@@ -2200,7 +2202,7 @@ export default function POS() {
                   display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '3px',
                   backgroundColor: 'rgba(197,168,128,0.08)'
                 }}>
-                  <div style={{ fontSize: '9px', fontWeight: 600, color: '#C5A880', letterSpacing: '0.08em', textTransform: 'uppercase' }}>R.U.C. N° {config?.ruc || '20601234567'}</div>
+                  <div style={{ fontSize: '9px', fontWeight: 600, color: '#C5A880', letterSpacing: '0.08em', textTransform: 'uppercase' }}>R.U.C. N° {config?.ruc || 'Pendiente en Ajustes'}</div>
                   <div style={{ fontSize: '12px', fontWeight: 800, color: '#FFF', letterSpacing: '0.02em' }}>{isFactura ? 'FACTURA ELECTRÓNICA' : 'BOLETA DE VENTA ELECTRÓNICA'}</div>
                   <div style={{ fontSize: '14px', fontWeight: 800, color: '#C5A880' }}>N° {lastCreatedSale.invoice_number}</div>
                 </div>

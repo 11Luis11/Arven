@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, ArrowUpDown, Check, Edit2, Eye, X } from 'lucide-react';
+import { Search, Filter, ArrowUpDown, Eye, X } from 'lucide-react';
 import { DataService, subscribeToRealtime } from '../../services/dataService';
 
 export default function Inventory() {
@@ -9,11 +9,6 @@ export default function Inventory() {
   const [selectedCat, setSelectedCat] = useState('all');
   const [sortField, setSortField] = useState('name');
   const [sortAsc, setSortAsc] = useState(true);
-  const [msg, setMsg] = useState('');
-
-  // Estados para Edición Rápida en Línea
-  const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ stock: 0, price: 0 });
 
   // Modal de detalle
   const [detailProduct, setDetailProduct] = useState(null);
@@ -33,37 +28,6 @@ export default function Inventory() {
     });
     return () => unsubscribe();
   }, []);
-
-  const handleStartEdit = (prod) => {
-    setEditingId(prod.id);
-    setEditForm({
-      stock: prod.stock,
-      price: prod.price
-    });
-  };
-
-  const handleSaveInline = async (prod) => {
-    const updated = {
-      ...prod,
-      stock: parseInt(editForm.stock) || 0,
-      price: parseFloat(editForm.price) || 0
-    };
-
-    await DataService.saveProduct(updated);
-    setEditingId(null);
-    setMsg('Inventario actualizado con éxito.');
-    setTimeout(() => setMsg(''), 3000);
-  };
-
-  const handleToggleActive = async (prod) => {
-    const updated = {
-      ...prod,
-      active: !prod.active
-    };
-    await DataService.saveProduct(updated);
-    setMsg(`Visibilidad de "${prod.name}" cambiada a ${!prod.active ? 'Visible' : 'Pausado'}.`);
-    setTimeout(() => setMsg(''), 3000);
-  };
 
   const handleSort = (field) => {
     if (sortField === field) {
@@ -100,21 +64,16 @@ export default function Inventory() {
 
   return (
     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      
-      {msg && (
-        <div style={{
-          padding: '10px 12px',
-          backgroundColor: '#EBFBEE',
-          color: '#2F855A',
-          border: '1px solid #C6F6D5',
-          fontSize: '12px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px'
-        }}>
-          <Check size={14} /> {msg}
-        </div>
-      )}
+
+      <div style={{
+        padding: '10px 12px',
+        backgroundColor: '#F9FAFB',
+        color: 'var(--text-secondary)',
+        border: '1px solid var(--border-color)',
+        fontSize: '12px'
+      }}>
+        Vista de solo lectura. Para editar precios, stock por color o visibilidad de un producto, hazlo desde <strong>Productos</strong>.
+      </div>
 
       {/* Controles de Filtros */}
       <div style={{
@@ -217,9 +176,8 @@ export default function Inventory() {
           </thead>
           <tbody>
             {sorted.map(prod => {
-              const isEditing = editingId === prod.id;
               const catObj = categories.find(c => c.id === prod.category_id);
-              
+
               return (
                 <tr 
                   key={prod.id} 
@@ -247,55 +205,33 @@ export default function Inventory() {
                   {/* Categoria */}
                   <td style={{ padding: '12px 16px' }}>{catObj ? catObj.name : 'Polo'}</td>
 
-                  {/* Stock (Edición Rápida) */}
+                  {/* Stock (solo lectura) */}
                   <td style={{ padding: '12px 16px' }}>
-                    {isEditing ? (
-                      <input 
-                        type="number"
-                        value={editForm.stock}
-                        onChange={e => setEditForm({ ...editForm, stock: e.target.value })}
-                        style={{ width: '60px', padding: '4px', border: '1px solid var(--color-primary)' }}
-                      />
-                    ) : (
-                      <span style={{
-                        color: prod.stock <= 5 ? 'var(--color-secondary)' : 'inherit',
-                        fontWeight: prod.stock <= 5 ? 600 : 'normal'
-                      }}>
-                        {prod.stock} uds
-                      </span>
-                    )}
+                    <span style={{
+                      color: prod.stock <= 5 ? 'var(--color-secondary)' : 'inherit',
+                      fontWeight: prod.stock <= 5 ? 600 : 'normal'
+                    }}>
+                      {prod.stock} uds
+                    </span>
                   </td>
 
-                  {/* Precio (Edición Rápida) */}
+                  {/* Precio (solo lectura) */}
                   <td style={{ padding: '12px 16px' }}>
-                    {isEditing ? (
-                      <input 
-                        type="number"
-                        step="0.1"
-                        value={editForm.price}
-                        onChange={e => setEditForm({ ...editForm, price: e.target.value })}
-                        style={{ width: '80px', padding: '4px', border: '1px solid var(--color-primary)' }}
-                      />
-                    ) : (
-                      <span>S/. {prod.price.toFixed(2)}</span>
-                    )}
+                    <span>S/. {prod.price.toFixed(2)}</span>
                   </td>
 
-                  {/* Estado Toggle */}
+                  {/* Estado (solo lectura) */}
                   <td style={{ padding: '12px 16px' }}>
-                    <button
-                      onClick={() => handleToggleActive(prod)}
-                      style={{
-                        padding: '4px 10px',
-                        fontSize: '11px',
-                        border: '1px solid var(--border-color)',
-                        backgroundColor: prod.active ? 'var(--text-primary)' : '#FFF',
-                        color: prod.active ? '#FFF' : 'var(--text-primary)',
-                        cursor: 'pointer'
-                      }}
-                    >
+                    <span style={{
+                      padding: '4px 10px',
+                      fontSize: '11px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: prod.active ? 'var(--text-primary)' : '#FFF',
+                      color: prod.active ? '#FFF' : 'var(--text-primary)',
+                      display: 'inline-block'
+                    }}>
                       {prod.active ? 'Visible' : 'Pausado'}
-                    </button>
+                    </span>
                   </td>
 
                   {/* Acciones */}
@@ -316,37 +252,6 @@ export default function Inventory() {
                       >
                         <Eye size={13} /> Detalle
                       </button>
-                    {isEditing ? (
-                      <button 
-                        onClick={() => handleSaveInline(prod)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'green',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px'
-                        }}
-                      >
-                        <Check size={16} /> Guardar
-                      </button>
-                    ) : (
-                      <button 
-                        onClick={() => handleStartEdit(prod)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--color-primary)',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px'
-                        }}
-                      >
-                        <Edit2 size={13} /> Editar rápido
-                      </button>
-                    )}
                     </div>
                   </td>
 
