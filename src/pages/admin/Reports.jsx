@@ -771,7 +771,14 @@ export default function Reports() {
                 )}
                 <div style={{ fontSize: '13px', fontWeight: 800, color: '#111', textTransform: 'uppercase', letterSpacing: '0.04em' }}>TICKET DE VENTA</div>
                 <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '2px', fontWeight: 600 }}>RUC: {config?.ruc || '20601234567'}</div>
-                {config?.ticketPhone && <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '1px' }}>Tel: {config.ticketPhone}</div>}
+                {config?.fiscalAddress && <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '1px' }}>{config.fiscalAddress}</div>}
+                {(config?.ticketPhone || config?.ticketEmail) && (
+                  <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '1px' }}>
+                    {config?.ticketPhone && <>Tel: {config.ticketPhone}</>}
+                    {config?.ticketPhone && config?.ticketEmail && <> | </>}
+                    {config?.ticketEmail && <>Email: {config.ticketEmail}</>}
+                  </div>
+                )}
               </div>
 
               {/* Date & Time Icons */}
@@ -1160,6 +1167,21 @@ export default function Reports() {
       {/* Estilos CSS de impresión específicos para ocultar el panel principal al imprimir el comprobante */}
       <style>{`
         @media print {
+          /* Tamaño de hoja por defecto (boleta/factura A4) */
+          @page {
+            size: A4;
+            margin: 0;
+          }
+
+          /* Tamaño de hoja específico para el ticket (rollo térmico 80mm) */
+          @page ticket-page {
+            size: 80mm auto;
+            margin: 0;
+          }
+          .ticket-print-container {
+            page: ticket-page;
+          }
+
           body * {
             visibility: hidden;
           }

@@ -716,6 +716,7 @@ export default function POS() {
     const storeName = (config?.businessName || config?.storeName || 'CARRILLO STORE').toUpperCase();
     const address = config?.fiscalAddress || '';
     const phone = config?.ticketPhone || '';
+    const email = config?.ticketEmail || '';
     const ruc = config?.ruc || '';
     const saleDate = new Date(sale.created_at);
     const isInvoice = sale.document_type === 'Boleta' || sale.document_type === 'Factura';
@@ -752,9 +753,9 @@ export default function POS() {
       doc.text(address, 40, y, { align: 'center', maxWidth: pw });
       y += 3.5;
     }
-    if (phone) {
+    if (phone || email) {
       doc.setFontSize(7);
-      doc.text(`Tel: ${phone}`, 40, y, { align: 'center' });
+      doc.text(`${phone ? 'Tel: ' + phone : ''}${phone && email ? ' | ' : ''}${email ? 'Email: ' + email : ''}`, 40, y, { align: 'center' });
       y += 3.5;
     }
 
@@ -1991,7 +1992,14 @@ export default function POS() {
                 )}
                 <div style={{ fontSize: '13px', fontWeight: 800, color: '#111', textTransform: 'uppercase', letterSpacing: '0.04em' }}>TICKET DE VENTA</div>
                 <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '2px', fontWeight: 600 }}>RUC: {config?.ruc || 'Pendiente de configurar en Ajustes'}</div>
-                {config?.ticketPhone && <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '1px' }}>Tel: {config.ticketPhone}</div>}
+                {config?.fiscalAddress && <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '1px' }}>{config.fiscalAddress}</div>}
+                {(config?.ticketPhone || config?.ticketEmail) && (
+                  <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '1px' }}>
+                    {config?.ticketPhone && <>Tel: {config.ticketPhone}</>}
+                    {config?.ticketPhone && config?.ticketEmail && <> | </>}
+                    {config?.ticketEmail && <>Email: {config.ticketEmail}</>}
+                  </div>
+                )}
               </div>
 
               {/* Date & Time Icons */}
@@ -2349,6 +2357,21 @@ export default function POS() {
       {/* CSS de impresión — oculta todo excepto el comprobante */}
       <style>{`
         @media print {
+          /* Tamaño de hoja por defecto (boleta/factura A4) */
+          @page {
+            size: A4;
+            margin: 0;
+          }
+
+          /* Tamaño de hoja específico para el ticket (rollo térmico 80mm) */
+          @page ticket-page {
+            size: 80mm auto;
+            margin: 0;
+          }
+          .ticket-print-container {
+            page: ticket-page;
+          }
+
           /* Ocultar todo por defecto */
           body * { visibility: hidden; }
 
