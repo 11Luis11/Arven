@@ -1991,6 +1991,7 @@ export default function POS() {
                 )}
                 <div style={{ fontSize: '13px', fontWeight: 800, color: '#111', textTransform: 'uppercase', letterSpacing: '0.04em' }}>TICKET DE VENTA</div>
                 <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '2px', fontWeight: 600 }}>RUC: {config?.ruc || 'Pendiente de configurar en Ajustes'}</div>
+                {config?.ticketPhone && <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '1px' }}>Tel: {config.ticketPhone}</div>}
               </div>
 
               {/* Date & Time Icons */}
@@ -2071,25 +2072,6 @@ export default function POS() {
 
               <div style={{ textAlign: 'center', fontSize: '10px', color: '#6B7280', margin: '12px 0', fontStyle: 'italic' }}>
                 ¡Gracias por tu compra! ♡
-              </div>
-
-              {/* Social networks dark bar */}
-              <div style={{
-                backgroundColor: '#111',
-                color: '#FFF',
-                padding: '10px',
-                textAlign: 'center',
-                fontSize: '9px',
-                borderRadius: '4px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '2px',
-                marginBottom: '16px'
-              }}>
-                {config?.footer?.whatsapp && <div>Cel: {config.footer.whatsapp}</div>}
-                <div style={{ letterSpacing: '0.08em', fontWeight: 700, marginTop: '2px' }}>
-                  {(config?.storeName || config?.businessName || 'TU TIENDA').toUpperCase()}
-                </div>
               </div>
 
               {/* Action Buttons */}

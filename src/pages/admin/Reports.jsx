@@ -771,6 +771,7 @@ export default function Reports() {
                 )}
                 <div style={{ fontSize: '13px', fontWeight: 800, color: '#111', textTransform: 'uppercase', letterSpacing: '0.04em' }}>TICKET DE VENTA</div>
                 <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '2px', fontWeight: 600 }}>RUC: {config?.ruc || '20601234567'}</div>
+                {config?.ticketPhone && <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '1px' }}>Tel: {config.ticketPhone}</div>}
               </div>
 
               {/* Date & Time Icons */}
@@ -856,23 +857,6 @@ export default function Reports() {
 
               <div style={{ textAlign: 'center', fontSize: '10px', color: '#6B7280', margin: '12px 0', fontStyle: 'italic' }}>
                 ¡Gracias por tu compra! ♡
-              </div>
-
-              {/* Social networks dark bar */}
-              <div style={{
-                backgroundColor: '#111',
-                color: '#FFF',
-                padding: '10px',
-                textAlign: 'center',
-                fontSize: '9px',
-                borderRadius: '4px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '2px',
-                marginBottom: '16px'
-              }}>
-                <div>Instagram: @arven.brands | Cel: {config?.footer?.whatsapp || '+51 987 654 321'}</div>
-                <div style={{ letterSpacing: '0.08em', fontWeight: 700, marginTop: '2px' }}>WWW.ARVEN.COM</div>
               </div>
 
               {/* Action Buttons */}
@@ -1144,27 +1128,10 @@ export default function Reports() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', borderTop: '1px solid #E5E7EB', paddingTop: '16px', marginBottom: '20px' }}>
                 <div style={{ fontSize: '9px', color: '#6B7280', lineHeight: 1.5 }}>
                   Representación impresa de la {selectedSale.invoice_number.startsWith('FFF1') ? 'Factura' : 'Boleta de Venta'} Electrónica.<br />
-                  Consulte este comprobante en: <strong>carrillostore.com/consultas</strong><br />
+                  Consulte este comprobante en: <strong>{(config?.storeName || config?.businessName || 'arven').toLowerCase().replace(/\s/g, '')}.com/consultas</strong><br />
                   Autorizado mediante resolución SUNAT N° 034-2020/SUNAT.<br />
                   Hash: {btoa(selectedSale.id).slice(0, 24)}
                 </div>
-              </div>
-
-              {/* Brand Dark Bar */}
-              <div style={{
-                backgroundColor: '#111',
-                color: '#FFF',
-                padding: '12px',
-                textAlign: 'center',
-                fontSize: '9px',
-                borderRadius: '6px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '2px',
-                marginBottom: '20px'
-              }}>
-                <div>Instagram: @arven.brands | Soporte WhatsApp: {config?.footer?.whatsapp || '+51 987 654 321'}</div>
-                <div style={{ letterSpacing: '0.08em', fontWeight: 700, marginTop: '2px' }}>WWW.ARVEN.COM</div>
               </div>
 
               {/* === Botones de Acción === */}
