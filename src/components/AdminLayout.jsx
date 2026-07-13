@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, ShoppingBag, Package, ClipboardList, 
-  Users, Wallet, TrendingUp, Settings, LogOut, Circle, Menu, X, Calculator, FileText
+  Users, Wallet, TrendingUp, Settings, LogOut, Circle, Menu, X, Calculator, FileText,
+  Landmark, ChevronDown, Receipt, BookOpen, ShieldCheck, FileBarChart, Sliders
 } from 'lucide-react';
 import { DataService, subscribeToRealtime } from '../services/dataService';
 import { applyFavicon } from '../utils/favicon';
@@ -57,14 +58,28 @@ export default function AdminLayout({ children }) {
     { name: 'Log de Acciones', path: '/admin/logs', icon: ClipboardList, roles: ['admin'] },
     { name: 'Configuración', path: '/admin/config', icon: Settings, roles: ['admin'] },
     { name: 'Costos Fabricación', path: '/admin/calculator', icon: Calculator, roles: ['admin'] },
-    { name: 'Declaración Venta', path: '/admin/declarations', icon: FileText, roles: ['admin'] },
+    { name: 'Finanzas y Tributación', path: '/admin/finanzas/dashboard', icon: Landmark, roles: ['admin', 'viewer'], basePath: '/admin/finanzas' },
   ];
 
-  const navItems = allNavItems.filter(item => item.roles.includes(currentUser.role));
+  const filterByRole = (items) => items
+    .filter(item => item.roles.includes(currentUser.role))
+    .map(item => item.children ? { ...item, children: filterByRole(item.children) } : item)
+    .filter(item => !item.children || item.children.length > 0);
+
+  const navItems = filterByRole(allNavItems);
+
+  const flatNavItems = navItems.flatMap(item => item.children ? item.children : [item]);
+
+  const [financeOpen, setFinanceOpen] = useState(location.pathname.startsWith('/admin/finanzas'));
+  useEffect(() => {
+    if (location.pathname.startsWith('/admin/finanzas')) setFinanceOpen(true);
+  }, [location.pathname]);
 
   useEffect(() => {
     const currentPath = location.pathname;
-    const isRestricted = allNavItems.some(item => item.path === currentPath && !item.roles.includes(currentUser.role));
+    const isRestricted = flatNavItems.length > 0 && allNavItems
+      .flatMap(item => item.children ? item.children : [item])
+      .some(item => item.path === currentPath && !item.roles.includes(currentUser.role));
     if (isRestricted) {
       if (currentUser.role === 'employee') {
         navigate('/admin/pos');
@@ -159,7 +174,57 @@ export default function AdminLayout({ children }) {
         <nav style={{ flex: 1, padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: '4px', overflowY: 'auto' }}>
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.path;
+
+            // Elemento con submenú (Finanzas y Tributación)
+            if (item.children) {
+              const groupActive = location.pathname.startsWith(item.basePath);
+              return (
+                <div key={item.name}>
+                  <button
+                    onClick={() => setFinanceOpen(o => !o)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '12px', width: '100%',
+                      padding: '12px 16px', border: 'none', background: groupActive ? 'rgba(255,255,255,0.05)' : 'transparent',
+                      color: groupActive ? '#FFFFFF' : '#999999', fontSize: '14px', fontWeight: 500,
+                      cursor: 'pointer', transition: 'var(--transition-fast)',
+                    }}
+                  >
+                    <Icon size={16} strokeWidth={1.5} />
+                    <span style={{ flex: 1, textAlign: 'left' }}>{item.name}</span>
+                    <ChevronDown size={14} style={{ transform: financeOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }} />
+                  </button>
+                  {financeOpen && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px', marginBottom: '4px' }}>
+                      {item.children.map(child => {
+                        const ChildIcon = child.icon;
+                        const isActive = location.pathname === child.path;
+                        return (
+                          <NavLink
+                            key={child.path}
+                            to={child.path}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '10px',
+                              padding: '10px 16px 10px 42px',
+                              color: isActive ? '#FFFFFF' : '#888888',
+                              backgroundColor: isActive ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+                              borderLeft: isActive ? '2px solid #FFFFFF' : '2px solid transparent',
+                              fontSize: '13px', fontWeight: 500, transition: 'var(--transition-fast)',
+                            }}
+                          >
+                            <ChildIcon size={14} strokeWidth={1.5} />
+                            {child.name}
+                          </NavLink>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            const isActive = item.basePath 
+              ? location.pathname.startsWith(item.basePath) 
+              : location.pathname === item.path;
             return (
               <NavLink 
                 key={item.path}
@@ -253,7 +318,7 @@ export default function AdminLayout({ children }) {
               <Menu size={24} />
             </button>
             <h2 style={{ fontSize: '16px', fontWeight: 500 }}>
-              {navItems.find(item => item.path === location.pathname)?.name || 'Panel Administrativo'}
+              {flatNavItems.find(item => item.path === location.pathname)?.name || 'Panel Administrativo'}
             </h2>
           </div>
 

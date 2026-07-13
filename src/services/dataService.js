@@ -337,6 +337,19 @@ export const DataService = {
     return updatedCustomer;
   },
 
+  async deleteCustomer(id) {
+    if (supabase) {
+      try {
+        const { error } = await supabase.from('customers').delete().eq('id', id);
+        if (error) throw error;
+      } catch (e) {
+        console.error('Error al eliminar cliente de Supabase:', e);
+        throw e;
+      }
+    }
+    return true;
+  },
+
   // --- CAJA REGISTRADORA ---
   async getCashRegister() {
     if (supabase) {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Mail, Phone, MapPin, FileText, ShoppingBag } from 'lucide-react';
+import { Search, Mail, Phone, MapPin, FileText, ShoppingBag, Pencil, Trash2 } from 'lucide-react';
 import { DataService, subscribeToRealtime } from '../../services/dataService';
 
 export default function Customers() {
@@ -12,6 +12,10 @@ export default function Customers() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newCust, setNewCust] = useState({ name: '', phone: '', email: '', document_number: '', address: '' });
   const [msg, setMsg] = useState('');
+
+  // Formulario de edición
+  const [isEditing, setIsEditing] = useState(false);
+  const [editCust, setEditCust] = useState({ id: '', name: '', phone: '', email: '', document_number: '', address: '' });
 
   const loadData = async () => {
     const custs = await DataService.getCustomers();
@@ -41,6 +45,44 @@ export default function Customers() {
     setNewCust({ name: '', phone: '', email: '', document_number: '', address: '' });
     setMsg('Cliente registrado exitosamente.');
     setTimeout(() => setMsg(''), 3000);
+  };
+
+  const handleStartEdit = (cust) => {
+    setEditCust({
+      id: cust.id,
+      name: cust.name,
+      phone: cust.phone || '',
+      email: cust.email || '',
+      document_number: cust.document_number || '',
+      address: cust.address || '',
+      document_type: cust.document_type || 'DNI'
+    });
+    setIsEditing(true);
+  };
+
+  const handleUpdateCustomer = async (e) => {
+    e.preventDefault();
+    if (!editCust.name || !editCust.document_number) return;
+    const saved = await DataService.saveCustomer(editCust);
+    setCustomers(customers.map(c => c.id === saved.id ? saved : c));
+    setIsEditing(false);
+    setMsg('Cliente actualizado exitosamente.');
+    setTimeout(() => setMsg(''), 3000);
+  };
+
+  const handleDeleteClick = async (id) => {
+    if (window.confirm('¿Estás seguro de que deseas eliminar este cliente?')) {
+      try {
+        await DataService.deleteCustomer(id);
+        setCustomers(customers.filter(c => c.id !== id));
+        setSelectedCustomerId(null);
+        setIsEditing(false);
+        setMsg('Cliente eliminado exitosamente.');
+        setTimeout(() => setMsg(''), 3000);
+      } catch (err) {
+        alert('Error al eliminar cliente.');
+      }
+    }
   };
 
   // Filtrado de clientes
@@ -190,29 +232,86 @@ export default function Customers() {
       {/* LADO DERECHO: DETALLES E HISTORIAL */}
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
         {activeCustomer ? (
-          <>
-            {/* Info Ficha */}
-            <div>
-              <h3 style={{ fontSize: '18px', fontWeight: 500, marginBottom: '16px' }}>Ficha de Cliente</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', fontSize: '13px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <FileText size={16} style={{ color: 'var(--text-secondary)' }} />
-                  <span>DNI/RUC: <strong>{activeCustomer.document_number}</strong></span>
+          isEditing ? (
+            <form onSubmit={handleUpdateCustomer} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 600 }}>Editar Ficha de Cliente</h3>
+                <button type="button" onClick={() => setIsEditing(false)} className="btn-secondary" style={{ padding: '6px 12px', fontSize: '12px' }}>
+                  Cancelar
+                </button>
+              </div>
+              
+              <div>
+                <label style={{ display: 'block', fontSize: '10px', marginBottom: '2px', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Nombre Completo</label>
+                <input type="text" required value={editCust.name} onChange={e => setEditCust({ ...editCust, name: e.target.value })} className="input-field" style={{ padding: '8px', fontSize: '13px' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '10px', marginBottom: '2px', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>DNI / RUC</label>
+                <input type="text" required value={editCust.document_number} onChange={e => setEditCust({ ...editCust, document_number: e.target.value })} className="input-field" style={{ padding: '8px', fontSize: '13px' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '10px', marginBottom: '2px', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Teléfono</label>
+                <input type="text" value={editCust.phone} onChange={e => setEditCust({ ...editCust, phone: e.target.value })} className="input-field" style={{ padding: '8px', fontSize: '13px' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '10px', marginBottom: '2px', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Correo Electrónico</label>
+                <input type="email" value={editCust.email} onChange={e => setEditCust({ ...editCust, email: e.target.value })} className="input-field" style={{ padding: '8px', fontSize: '13px' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '10px', marginBottom: '2px', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Dirección</label>
+                <input type="text" value={editCust.address} onChange={e => setEditCust({ ...editCust, address: e.target.value })} className="input-field" style={{ padding: '8px', fontSize: '13px' }} />
+              </div>
+              
+              <button type="submit" className="btn-primary" style={{ width: '100%', padding: '10px', fontSize: '13px', fontWeight: 600, marginTop: '8px' }}>
+                Guardar Cambios
+              </button>
+            </form>
+          ) : (
+            <>
+              {/* Info Ficha */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: 500 }}>Ficha de Cliente</h3>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button 
+                      onClick={() => handleStartEdit(activeCustomer)}
+                      style={{
+                        padding: '6px 12px', fontSize: '12px', border: '1px solid var(--border-color)',
+                        backgroundColor: '#FFF', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 500
+                      }}
+                    >
+                      <Pencil size={13} /> Editar
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteClick(activeCustomer.id)}
+                      style={{
+                        padding: '6px 12px', fontSize: '12px', border: '1px solid #FECACA',
+                        backgroundColor: '#FFF5F5', color: '#DC2626', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 500
+                      }}
+                    >
+                      <Trash2 size={13} /> Eliminar
+                    </button>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Phone size={16} style={{ color: 'var(--text-secondary)' }} />
-                  <span>Teléfono: <strong>{activeCustomer.phone || 'No registrado'}</strong></span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Mail size={16} style={{ color: 'var(--text-secondary)' }} />
-                  <span>Email: <strong>{activeCustomer.email || 'No registrado'}</strong></span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <MapPin size={16} style={{ color: 'var(--text-secondary)' }} />
-                  <span>Dirección: <strong>{activeCustomer.address || 'No registrada'}</strong></span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', fontSize: '13px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FileText size={16} style={{ color: 'var(--text-secondary)' }} />
+                    <span>DNI/RUC: <strong>{activeCustomer.document_number}</strong></span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Phone size={16} style={{ color: 'var(--text-secondary)' }} />
+                    <span>Teléfono: <strong>{activeCustomer.phone || 'No registrado'}</strong></span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Mail size={16} style={{ color: 'var(--text-secondary)' }} />
+                    <span>Email: <strong>{activeCustomer.email || 'No registrado'}</strong></span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <MapPin size={16} style={{ color: 'var(--text-secondary)' }} />
+                    <span>Dirección: <strong>{activeCustomer.address || 'No registrada'}</strong></span>
+                  </div>
                 </div>
               </div>
-            </div>
 
             <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)' }} />
 
@@ -275,6 +374,7 @@ export default function Customers() {
               )}
             </div>
           </>
+          )
         ) : (
           <div style={{
             height: '300px',
