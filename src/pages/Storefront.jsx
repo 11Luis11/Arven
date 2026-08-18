@@ -149,63 +149,27 @@ export default function Storefront({ onOpenCart }) {
           }}
         />
 
-        {/* Contenido Hero Alineado al Centro-Derecha (Caja Roja del usuario) */}
+        {/* Contenido Hero — minimalista: solo el CTA principal */}
         <div className="hero-content-container">
-          <h1 style={{
-            fontSize: 'calc(18px + 1vw)',
-            fontWeight: 500,
-            lineHeight: 1.2,
-            color: '#DFB15B', // Color Dorado Lujoso
-            marginBottom: '12px',
-            textTransform: 'uppercase',
-            letterSpacing: '0.1em',
-            textShadow: '0 2px 10px rgba(0, 0, 0, 0.85)' // Sombra para legibilidad sin fondo
-          }}>
-            {config.heroTitle}
-          </h1>
-          <p style={{
-            fontSize: '13px',
-            color: '#F4E8C1', // Texto color crema dorado suave
-            marginBottom: '24px',
-            fontWeight: 300,
-            lineHeight: 1.5,
-            maxWidth: '520px',
-            textShadow: '0 1px 8px rgba(0, 0, 0, 0.9)' // Sombra para legibilidad sin fondo
-          }}>
-            {config.heroSubtitle}
-          </p>
-          <div className="hero-buttons" style={{ display: 'flex', justifyContent: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
-            <Link to="/catalog" className="btn-primary" style={{ backgroundColor: '#DFB15B', color: '#111111', fontWeight: 600, border: 'none', borderRadius: '0px', padding: '10px 24px', fontSize: '12px', letterSpacing: '0.05em', boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
-              Comprar ahora
-            </Link>
-            <Link to="/catalog" className="btn-secondary" style={{ borderColor: '#DFB15B', color: '#DFB15B', backgroundColor: 'rgba(0, 0, 0, 0.3)', fontWeight: 600, borderRadius: '0px', padding: '10px 24px', fontSize: '12px', letterSpacing: '0.05em', boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
-              Ver colección
-            </Link>
-          </div>
+          <Link to="/catalog" className="btn-primary" style={{ backgroundColor: '#DFB15B', color: '#111111', fontWeight: 600, border: 'none', borderRadius: '2px', padding: '14px 40px', fontSize: '13px', letterSpacing: '0.08em', textTransform: 'uppercase', boxShadow: '0 4px 16px rgba(0,0,0,0.25)' }}>
+            Comprar ahora
+          </Link>
         </div>
 
         <style>{`
           .hero-content-container {
             position: absolute;
-            bottom: 50px;
-            left: 36%;
+            bottom: 64px;
+            left: 0;
+            right: 0;
             z-index: 2;
-            max-width: 650px;
-            width: calc(100% - 40%);
-            text-align: left;
+            display: flex;
+            justify-content: center;
             animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-          }
-          @media (max-width: 992px) {
-            .hero-content-container {
-              left: 20%;
-              width: calc(100% - 25%);
-            }
           }
           @media (max-width: 768px) {
             .hero-content-container {
-              left: 20px;
-              width: calc(100% - 40px);
-              bottom: 40px;
+              bottom: 44px;
             }
           }
         `}</style>
@@ -362,47 +326,53 @@ export default function Storefront({ onOpenCart }) {
 
         <div className="categories-grid" style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-          gap: '24px'
+          gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+          gap: '16px'
         }}>
           {categories.map((cat) => (
-            <Link 
+            <Link
               to={`/catalog?category=${cat.slug}`}
               key={cat.id}
               className="hover-subtle category-card"
               style={{
-                display: 'block',
-                position: 'relative',
-                height: '380px',
-                overflow: 'hidden',
-                backgroundColor: '#FFF',
-                border: '1px solid var(--border-color)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '10px',
+                textDecoration: 'none'
               }}
             >
-              <img 
-                src={cat.image_url} 
-                alt={cat.name} 
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  transition: 'transform 0.8s cubic-bezier(0.16, 1, 0.3, 1)'
-                }}
-                onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'}
-                onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
-              />
               <div style={{
-                position: 'absolute',
-                bottom: 0,
-                left: 0,
-                right: 0,
-                padding: '24px',
-                background: 'linear-gradient(transparent, rgba(0,0,0,0.65))',
-                color: '#FFF'
+                width: '100%',
+                aspectRatio: '1 / 1',
+                borderRadius: '50%',
+                overflow: 'hidden',
+                border: '1px solid var(--border-color)',
+                backgroundColor: '#FFF'
               }}>
-                <h3 style={{ color: '#FFF', fontSize: '18px', fontWeight: 500, marginBottom: '4px' }}>{cat.name}</h3>
-                <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '12px' }}>{cat.description}</p>
+                <img
+                  src={cat.image_url}
+                  alt={cat.name}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    transition: 'transform 0.5s cubic-bezier(0.16, 1, 0.3, 1)'
+                  }}
+                  onMouseOver={e => e.currentTarget.style.transform = 'scale(1.08)'}
+                  onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
+                />
               </div>
+              <span style={{
+                fontSize: '12px',
+                fontWeight: 500,
+                textAlign: 'center',
+                color: 'var(--text-primary)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.03em'
+              }}>
+                {cat.name}
+              </span>
             </Link>
           ))}
         </div>
