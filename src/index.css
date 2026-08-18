@@ -278,13 +278,10 @@ button, input, select, textarea {
     justify-content: center;
   }
 
-  /* Categorías en home: 1 col en muy pequeño, 2 en mobile normal */
+  /* Categorías en home: botones circulares pequeños, 2 por fila en mobile */
   .categories-grid {
     grid-template-columns: repeat(2, 1fr) !important;
-    gap: 12px !important;
-  }
-  .category-card {
-    height: 220px !important;
+    gap: 20px 12px !important;
   }
 
   /* Productos destacados: 2 columnas en mobile */
@@ -343,9 +340,6 @@ button, input, select, textarea {
 }
 
 @media (max-width: 400px) {
-  .categories-grid {
-    grid-template-columns: 1fr !important;
-  }
   .products-home-grid {
     grid-template-columns: 1fr !important;
   }
