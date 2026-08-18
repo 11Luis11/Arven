@@ -106,9 +106,9 @@ function StorefrontLayout({ onOpenCart }) {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-primary)' }}>
       {/* NAVBAR */}
-      <nav style={{
-        backgroundColor: 'rgba(248, 247, 244, 0.8)',
-        backdropFilter: 'blur(10px)',
+      <nav className="nav-height" style={{
+        backgroundColor: 'rgba(248, 247, 244, 0.95)',
+        backdropFilter: 'blur(12px)',
         borderBottom: '1px solid var(--border-color)',
         position: 'sticky',
         top: 0,
@@ -267,25 +267,49 @@ function StorefrontLayout({ onOpenCart }) {
       {mobileMenuOpen && (
         <div style={{
           position: 'fixed',
-          top: '70px',
+          top: '60px',
           left: 0,
           right: 0,
+          bottom: 0,
           backgroundColor: 'var(--bg-card)',
-          borderBottom: '1px solid var(--border-color)',
           zIndex: 499,
-          padding: '24px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '16px',
-          boxShadow: '0 10px 15px rgba(0,0,0,0.05)'
+          overflowY: 'auto'
         }}>
-          <Link to="/catalog" style={{ fontWeight: 600, fontSize: '14px' }}>Ver Todo</Link>
-          {categories.map(cat => (
-            <Link key={cat.id} to={`/catalog?category=${cat.slug}`} style={{ fontWeight: 500, fontSize: '14px', color: 'var(--text-secondary)' }}>
-              {cat.name}
-            </Link>
-          ))}
+          {/* Buscador dentro del menú mobile */}
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color)' }}>
+            <form onSubmit={handleSearchSubmit} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Search size={15} style={{ position: 'absolute', left: '12px', color: 'var(--text-secondary)' }} />
+              <input
+                type="text"
+                placeholder="¿Qué polo estás buscando?"
+                value={navSearch}
+                onChange={e => setNavSearch(e.target.value)}
+                style={{
+                  width: '100%', padding: '10px 12px 10px 36px',
+                  border: '1px solid var(--border-color)', fontSize: '14px', outline: 'none',
+                  backgroundColor: '#FAFAFA'
+                }}
+              />
+            </form>
+          </div>
 
+          {/* Links de categorías */}
+          <div style={{ padding: '8px 0' }}>
+            <Link to="/catalog" style={{ display: 'block', padding: '14px 20px', fontWeight: 600, fontSize: '14px', letterSpacing: '0.04em', textTransform: 'uppercase', borderBottom: '1px solid var(--border-color)' }}>
+              Ver Todo
+            </Link>
+            {categories.map(cat => (
+              <Link
+                key={cat.id}
+                to={`/catalog?category=${cat.slug}`}
+                style={{ display: 'block', padding: '14px 20px', fontWeight: 400, fontSize: '14px', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}
+              >
+                {cat.name}
+              </Link>
+            ))}
+          </div>
         </div>
       )}
 
@@ -299,18 +323,13 @@ function StorefrontLayout({ onOpenCart }) {
         </Routes>
       </div>
 
-      {/* Inyección de CSS responsivo simple en línea */}
+      {/* CSS responsivo navbar */}
       <style>{`
         @media (max-width: 768px) {
-          .desktop-menu {
-            display: none !important;
-          }
-          .mobile-menu-btn {
-            display: inline-flex !important;
-          }
-          .nav-search-bar {
-            display: none !important;
-          }
+          .desktop-menu { display: none !important; }
+          .mobile-menu-btn { display: inline-flex !important; }
+          .nav-search-bar { display: none !important; }
+          .nav-height { height: 60px !important; }
         }
       `}</style>
     </div>
