@@ -106,7 +106,7 @@ export default function Storefront({ onOpenCart }) {
 
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', overflowX: 'hidden', width: '100%' }}>
       <SEO title="Inicio" description={config.heroSubtitle} ogImage={heroImageList[0]} />
 
       <div style={{
@@ -123,7 +123,7 @@ export default function Storefront({ onOpenCart }) {
       </div>
 
       {/* HERO SLIDER PRINCIPAL INTERACTIVO */}
-      <section style={{
+      <section className="hero-section" style={{
         position: 'relative',
         height: '80vh',
         overflow: 'hidden',
@@ -174,7 +174,7 @@ export default function Storefront({ onOpenCart }) {
           }}>
             {config.heroSubtitle}
           </p>
-          <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
+          <div className="hero-buttons" style={{ display: 'flex', justifyContent: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
             <Link to="/catalog" className="btn-primary" style={{ backgroundColor: '#DFB15B', color: '#111111', fontWeight: 600, border: 'none', borderRadius: '0px', padding: '10px 24px', fontSize: '12px', letterSpacing: '0.05em', boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
               Comprar ahora
             </Link>
@@ -360,7 +360,7 @@ export default function Storefront({ onOpenCart }) {
           </Link>
         </div>
 
-        <div style={{
+        <div className="categories-grid" style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
           gap: '24px'
@@ -369,7 +369,7 @@ export default function Storefront({ onOpenCart }) {
             <Link 
               to={`/catalog?category=${cat.slug}`}
               key={cat.id}
-              className="hover-subtle"
+              className="hover-subtle category-card"
               style={{
                 display: 'block',
                 position: 'relative',
@@ -425,7 +425,7 @@ export default function Storefront({ onOpenCart }) {
               <p style={{ fontSize: '14px' }}>No hay polos cargados en el catálogo actualmente.</p>
             </div>
           ) : (
-            <div style={{
+            <div className="products-home-grid" style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(3, 1fr)',
               gap: '30px'
@@ -461,7 +461,7 @@ export default function Storefront({ onOpenCart }) {
                       </span>
                     )}
 
-                    <Link to={`/product/${prod.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '400px', overflow: 'hidden', backgroundColor: '#F8F8F8' }}>
+                    <Link to={`/product/${prod.id}`} className="product-home-img" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '400px', overflow: 'hidden', backgroundColor: '#F8F8F8' }}>
                       <img 
                         src={prod.image_url} 
                         alt={prod.name} 
@@ -530,7 +530,7 @@ export default function Storefront({ onOpenCart }) {
         className="reveal-on-scroll"
         style={{ padding: '80px 24px', backgroundColor: 'var(--bg-primary)', borderTop: '1px solid var(--border-color)' }}
       >
-        <div style={{
+        <div className="benefits-grid" style={{
           maxWidth: '1200px',
           marginLeft: 'auto',
           marginRight: 'auto',
@@ -650,7 +650,7 @@ export default function Storefront({ onOpenCart }) {
             Aprecia la caída perfecta y la fluidez de nuestros materiales premium en modelos reales bajo luz natural y de estudio.
           </p>
 
-          <div style={{
+          <div className="runway-videos-wrapper" style={{
             display: 'flex',
             flexWrap: 'wrap',
             gap: '24px',
@@ -673,14 +673,14 @@ export default function Storefront({ onOpenCart }) {
                 desc: 'Diseño vanguardista con tintas ecológicas de larga duración'
               }
             ]).map((video, idx) => (
-              <div key={idx} style={{ 
+              <div key={idx} className="runway-video-card" style={{ 
                 backgroundColor: '#000', 
                 borderRadius: '16px',
                 overflow: 'hidden',
                 boxShadow: '0 12px 30px rgba(0, 0, 0, 0.4)',
                 border: '1px solid rgba(255, 255, 255, 0.08)',
                 position: 'relative',
-                height: '460px', // Reels vertical height
+                height: '460px',
                 width: '260px',
                 transition: 'transform 0.3s ease'
               }}
@@ -732,7 +732,7 @@ export default function Storefront({ onOpenCart }) {
           {subscribed ? (
             <p style={{ color: 'var(--color-primary)', fontWeight: 500 }}>¡Gracias por suscribirte! Te enviaremos noticias pronto.</p>
           ) : (
-            <form onSubmit={handleSubscribe} style={{ display: 'flex', gap: '8px', maxWidth: '450px', marginLeft: 'auto', marginRight: 'auto' }}>
+            <form onSubmit={handleSubscribe} className="newsletter-form" style={{ display: 'flex', gap: '8px', maxWidth: '450px', marginLeft: 'auto', marginRight: 'auto' }}>
               <input type="email" required placeholder="Ingresa tu correo electrónico" value={email} onChange={e => setEmail(e.target.value)} style={{ flex: 1, padding: '12px 16px', border: '1px solid rgba(255,255,255,0.2)', backgroundColor: 'rgba(255,255,255,0.05)', color: '#FFF', outline: 'none', fontSize: '14px' }} />
               <button type="submit" style={{ padding: '12px 24px', backgroundColor: '#FFF', color: '#111', border: 'none', fontWeight: 500, cursor: 'pointer' }}>Suscribir</button>
             </form>
@@ -742,7 +742,7 @@ export default function Storefront({ onOpenCart }) {
 
       {/* FOOTER */}
       <footer style={{ backgroundColor: '#0A0A0A', color: 'rgba(255,255,255,0.5)', padding: '60px 24px 30px 24px', borderTop: '1px solid #222', fontSize: '13px' }}>
-        <div style={{ maxWidth: '1200px', marginLeft: 'auto', marginRight: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '40px', marginBottom: '60px' }}>
+        <div className="footer-grid" style={{ maxWidth: '1200px', marginLeft: 'auto', marginRight: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '40px', marginBottom: '60px' }}>
           <div>
             <h3 style={{ color: '#FFF', fontSize: '16px', fontWeight: 500, marginBottom: '20px' }}>{config.storeName}</h3>
             <p style={{ lineHeight: 1.6, fontWeight: 300 }}>

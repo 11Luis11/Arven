@@ -50,8 +50,8 @@ export default function Catalog({ onOpenCart }) {
 
   return (
     <div
-      className="product-detail-wrapper"
-      style={{ padding: '40px 24px', maxWidth: '1200px', marginLeft: 'auto', marginRight: 'auto', width: '100%', minHeight: '80vh' }}
+      className="catalog-page-root"
+      style={{ padding: '40px 24px', maxWidth: '1200px', marginLeft: 'auto', marginRight: 'auto', width: '100%', minHeight: '80vh', boxSizing: 'border-box' }}
     >
       <SEO
         title="Catálogo de Polos"

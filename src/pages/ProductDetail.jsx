@@ -287,13 +287,6 @@ export default function ProductDetail({ onOpenCart }) {
             </div>
           </div>
 
-          {/* Descripción debajo de la galería */}
-          <div className="product-description-block" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '18px' }}>
-            <h3 style={{ fontSize: '13px', fontWeight: 600, marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-primary)' }}>Descripción</h3>
-            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.7, fontWeight: 300, whiteSpace: 'pre-wrap' }}>
-              {product.description}
-            </p>
-          </div>
         </div>
 
         {/* COLUMNA DERECHA: Ficha del producto */}
@@ -357,17 +350,69 @@ export default function ProductDetail({ onOpenCart }) {
             );
           })()}
 
-          {/* Promos simples */}
+          {/* Descripción del producto */}
+          {product.description && (
+            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+              <h3 style={{ fontSize: '11px', fontWeight: 600, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)' }}>Descripción</h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.7, fontWeight: 300, whiteSpace: 'pre-wrap' }}>
+                {product.description}
+              </p>
+            </div>
+          )}
+
+          {/* Promos simples — diseño minimalista */}
           {(() => {
             const simplePromos = (product.wholesale_tiers || []).find(t => t.type === 'simple_promos')?.data || [];
             if (simplePromos.length === 0) return null;
             return (
-              <div style={{ padding: '14px 16px', backgroundColor: '#FFF0F3', border: '1px solid #FFCCD5', color: '#C9184A', fontWeight: 600, fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#FF4D6D', fontWeight: 700 }}>🔥 Promoción Especial</span>
+              <div style={{
+                border: '1px solid var(--border-color)',
+                backgroundColor: '#FAFAFA',
+                overflow: 'hidden'
+              }}>
+                {/* Header de la sección */}
+                <div style={{
+                  padding: '10px 14px',
+                  borderBottom: '1px solid var(--border-color)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  backgroundColor: '#FFF'
+                }}>
+                  <span style={{
+                    width: '18px', height: '18px',
+                    backgroundColor: 'var(--text-primary)',
+                    color: '#FFF',
+                    fontSize: '9px',
+                    fontWeight: 700,
+                    letterSpacing: '0.02em',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0
+                  }}>%</span>
+                  <span style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-primary)' }}>
+                    Promoción por volumen
+                  </span>
+                </div>
+                {/* Filas de promos */}
                 {simplePromos.map((promo, idx) => (
-                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>Lleva {promo.qty} polos por solo:</span>
-                    <strong>S/. {parseFloat(promo.price).toFixed(2)}</strong>
+                  <div
+                    key={idx}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '11px 14px',
+                      borderBottom: idx < simplePromos.length - 1 ? '1px solid var(--border-color)' : 'none',
+                      fontSize: '13px',
+                      color: 'var(--text-primary)'
+                    }}
+                  >
+                    <span style={{ fontWeight: 400, color: 'var(--text-secondary)' }}>
+                      Lleva {promo.qty} polos por solo:
+                    </span>
+                    <strong style={{ fontWeight: 700, fontSize: '15px', letterSpacing: '-0.01em' }}>
+                      S/. {parseFloat(promo.price).toFixed(2)}
+                    </strong>
                   </div>
                 ))}
               </div>
