@@ -104,7 +104,7 @@ function StorefrontLayout({ onOpenCart }) {
     : [];
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-primary)' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-primary)', overflowX: 'hidden', width: '100%' }}>
       {/* NAVBAR */}
       <nav className="nav-height" style={{
         backgroundColor: 'rgba(248, 247, 244, 0.95)',
