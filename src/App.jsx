@@ -8,6 +8,7 @@ import { applyFavicon } from './utils/favicon';
 import Storefront from './pages/Storefront';
 import Catalog from './pages/Catalog';
 import ProductDetail from './pages/ProductDetail';
+import Footer from './components/Footer';
 
 // Admin Pages (cargados bajo demanda con lazy — solo cuando el admin navega ahí)
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'));
@@ -322,6 +323,8 @@ function StorefrontLayout({ onOpenCart }) {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
+
+      <Footer config={config} />
 
       {/* CSS responsivo navbar */}
       <style>{`
