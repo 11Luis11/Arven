@@ -252,30 +252,12 @@ button, input, select, textarea {
    RESPONSIVE — STOREFRONT HOME
    ========================================== */
 
-/* Hero: altura reducida en mobile */
+/* Hero: altura reducida en mobile para que se vea la imagen completa */
 @media (max-width: 768px) {
   .hero-section {
-    height: 65vh !important;
-    min-height: 420px;
-  }
-  .hero-content-container {
-    left: 16px !important;
-    width: calc(100% - 32px) !important;
-    bottom: 56px !important;
-  }
-  .hero-content-container h1 {
-    font-size: 22px !important;
-  }
-  .hero-content-container p {
-    font-size: 13px !important;
-  }
-  .hero-buttons {
-    flex-direction: column !important;
-    gap: 10px !important;
-  }
-  .hero-buttons a {
-    text-align: center;
-    justify-content: center;
+    height: 46vh !important;
+    min-height: 320px;
+    max-height: 460px;
   }
 
   /* Categorías en home: botones circulares pequeños, 2 por fila en mobile */
@@ -336,6 +318,10 @@ button, input, select, textarea {
   }
   .section-padded-sm {
     padding: 32px 16px !important;
+  }
+  .section-padded-v {
+    padding-top: 48px !important;
+    padding-bottom: 48px !important;
   }
 }
 
