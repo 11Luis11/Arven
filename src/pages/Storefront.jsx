@@ -326,7 +326,7 @@ export default function Storefront({ onOpenCart }) {
 
         <div className="categories-grid" style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
           gap: '16px'
         }}>
           {categories.map((cat) => (
@@ -337,15 +337,14 @@ export default function Storefront({ onOpenCart }) {
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                alignItems: 'center',
                 gap: '10px',
                 textDecoration: 'none'
               }}
             >
               <div style={{
                 width: '100%',
-                aspectRatio: '1 / 1',
-                borderRadius: '50%',
+                aspectRatio: '4 / 3',
+                borderRadius: '10px',
                 overflow: 'hidden',
                 border: '1px solid var(--border-color)',
                 backgroundColor: '#FFF'
@@ -359,7 +358,7 @@ export default function Storefront({ onOpenCart }) {
                     objectFit: 'cover',
                     transition: 'transform 0.5s cubic-bezier(0.16, 1, 0.3, 1)'
                   }}
-                  onMouseOver={e => e.currentTarget.style.transform = 'scale(1.08)'}
+                  onMouseOver={e => e.currentTarget.style.transform = 'scale(1.06)'}
                   onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
                 />
               </div>
@@ -373,6 +372,7 @@ export default function Storefront({ onOpenCart }) {
               }}>
                 {cat.name}
               </span>
+
             </Link>
           ))}
         </div>
