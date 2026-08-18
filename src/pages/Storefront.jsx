@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Star, Mail, Shield, CheckCircle, Truck, RefreshCw, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Star, Mail, Shield, CheckCircle, Truck, RefreshCw, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
 import { DataService, subscribeToRealtime } from '../services/dataService';
 import SEO from '../components/SEO';
 import { VideoPlayer, useResolvedUrl } from '../components/MediaResolver';
@@ -314,14 +314,9 @@ export default function Storefront({ onOpenCart }) {
         className="reveal-on-scroll section-padded"
         style={{ padding: '80px 24px', maxWidth: '1200px', marginLeft: 'auto', marginRight: 'auto', width: '100%' }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '40px' }}>
-          <div>
-            <span style={{ fontSize: '12px', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Colecciones</span>
-            <h2 style={{ fontSize: '28px', fontWeight: 500, marginTop: '8px' }}>Categorías Destacadas</h2>
-          </div>
-          <Link to="/catalog" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: 500 }}>
-            Ver Todo <ArrowRight size={16} />
-          </Link>
+        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+          <span style={{ fontSize: '12px', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Colecciones</span>
+          <h2 style={{ fontSize: '32px', fontWeight: 400, marginTop: '8px', letterSpacing: '0.02em', textTransform: 'uppercase' }}>Categorías Destacadas</h2>
         </div>
 
         <div className="categories-grid" style={{
