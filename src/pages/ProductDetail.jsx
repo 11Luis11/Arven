@@ -14,6 +14,9 @@ export default function ProductDetail({ onOpenCart }) {
   const [selectedSize, setSelectedSize] = useState('M');
   const [selectedColor, setSelectedColor] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [descExpanded, setDescExpanded] = useState(false);
+
+  const DESC_LIMIT = 180;
 
   const imageContainerRef = useRef(null);
   const zoomImageRef = useRef(null);
@@ -21,6 +24,7 @@ export default function ProductDetail({ onOpenCart }) {
   useEffect(() => {
     const fetchProduct = async () => {
       setLoading(true);
+      setDescExpanded(false);
       const prods = await DataService.getProducts();
       const found = prods.find(p => p.id === id);
 
@@ -43,9 +47,19 @@ export default function ProductDetail({ onOpenCart }) {
           setSelectedSize('M');
         }
 
-        const similar = prods
+        let similar = prods
           .filter(p => p.category_id === found.category_id && p.id !== found.id && p.active)
           .slice(0, 3);
+
+        // Si no hay suficientes de la misma categoría, completar con otros productos activos
+        if (similar.length < 3) {
+          const usedIds = new Set([found.id, ...similar.map(p => p.id)]);
+          const extra = prods
+            .filter(p => p.active && !usedIds.has(p.id))
+            .slice(0, 3 - similar.length);
+          similar = [...similar, ...extra];
+        }
+
         setRecommended(similar);
       }
       const cfg = await DataService.getConfig();
@@ -524,14 +538,32 @@ export default function ProductDetail({ onOpenCart }) {
           </div>
 
           {/* Descripción del producto */}
-          {product.description && (
-            <div className="product-description-block" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
-              <h3 style={{ fontSize: '11px', fontWeight: 600, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)' }}>Descripción</h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.7, fontWeight: 300, whiteSpace: 'pre-wrap' }}>
-                {product.description}
-              </p>
-            </div>
-          )}
+          {product.description && (() => {
+            const isLong = product.description.length > DESC_LIMIT;
+            const displayText = (isLong && !descExpanded)
+              ? product.description.slice(0, DESC_LIMIT).trimEnd() + '…'
+              : product.description;
+            return (
+              <div className="product-description-block" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+                <h3 style={{ fontSize: '11px', fontWeight: 600, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)' }}>Descripción</h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.7, fontWeight: 300, whiteSpace: 'pre-wrap' }}>
+                  {displayText}
+                </p>
+                {isLong && (
+                  <button
+                    onClick={() => setDescExpanded(!descExpanded)}
+                    style={{
+                      background: 'none', border: 'none', padding: 0, marginTop: '6px',
+                      fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)',
+                      textDecoration: 'underline', cursor: 'pointer', letterSpacing: '0.02em'
+                    }}
+                  >
+                    {descExpanded ? 'Ver menos' : 'Ver más...'}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
