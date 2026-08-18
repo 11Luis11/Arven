@@ -311,7 +311,7 @@ export default function Storefront({ onOpenCart }) {
       {/* SECCIÓN CATEGORÍAS */}
       <section 
         ref={el => revealRefs.current[0] = el}
-        className="reveal-on-scroll"
+        className="reveal-on-scroll section-padded"
         style={{ padding: '80px 24px', maxWidth: '1200px', marginLeft: 'auto', marginRight: 'auto', width: '100%' }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '40px' }}>
@@ -381,7 +381,7 @@ export default function Storefront({ onOpenCart }) {
       {/* PRODUCTOS DESTACADOS */}
       <section 
         ref={el => revealRefs.current[2] = el}
-        className="reveal-on-scroll"
+        className="reveal-on-scroll section-padded"
         style={{ padding: '80px 24px', backgroundColor: '#FFFFFF', width: '100%', borderBottom: '1px solid var(--border-color)' }}
       >
         <div style={{ maxWidth: '1200px', marginLeft: 'auto', marginRight: 'auto' }}>
@@ -497,7 +497,7 @@ export default function Storefront({ onOpenCart }) {
       {/* BENEFICIOS */}
       <section 
         ref={el => revealRefs.current[3] = el}
-        className="reveal-on-scroll"
+        className="reveal-on-scroll section-padded"
         style={{ padding: '80px 24px', backgroundColor: 'var(--bg-primary)', borderTop: '1px solid var(--border-color)' }}
       >
         <div className="benefits-grid" style={{
@@ -546,7 +546,7 @@ export default function Storefront({ onOpenCart }) {
       {reviewList.length > 0 && (
         <section 
           ref={el => revealRefs.current[4] = el}
-          className="reveal-on-scroll"
+          className="reveal-on-scroll section-padded-v"
           style={{ padding: '80px 0', backgroundColor: '#FAFAFA', borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)', overflow: 'hidden' }}
         >
           <div style={{ textAlign: 'center', marginBottom: '40px', padding: '0 24px' }}>
@@ -689,7 +689,7 @@ export default function Storefront({ onOpenCart }) {
       </section>
 
       {/* NEWSLETTER */}
-      <section style={{ padding: '80px 24px', backgroundColor: '#111', color: '#FFF', textAlign: 'center' }}>
+      <section className="section-padded" style={{ padding: '80px 24px', backgroundColor: '#111', color: '#FFF', textAlign: 'center' }}>
         <div style={{ maxWidth: '600px', marginLeft: 'auto', marginRight: 'auto' }}>
           <Mail size={32} strokeWidth={1.5} style={{ marginBottom: '16px', opacity: 0.8 }} />
           <h2 style={{ fontSize: '28px', fontWeight: 400, color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>
