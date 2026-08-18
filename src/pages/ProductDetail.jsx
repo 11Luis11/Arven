@@ -350,16 +350,6 @@ export default function ProductDetail({ onOpenCart }) {
             );
           })()}
 
-          {/* Descripción del producto */}
-          {product.description && (
-            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
-              <h3 style={{ fontSize: '11px', fontWeight: 600, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)' }}>Descripción</h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.7, fontWeight: 300, whiteSpace: 'pre-wrap' }}>
-                {product.description}
-              </p>
-            </div>
-          )}
-
           {/* Promos simples — diseño minimalista */}
           {(() => {
             const simplePromos = (product.wholesale_tiers || []).find(t => t.type === 'simple_promos')?.data || [];
@@ -532,6 +522,16 @@ export default function ProductDetail({ onOpenCart }) {
               </div>
             ))}
           </div>
+
+          {/* Descripción del producto */}
+          {product.description && (
+            <div className="product-description-block" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+              <h3 style={{ fontSize: '11px', fontWeight: 600, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)' }}>Descripción</h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.7, fontWeight: 300, whiteSpace: 'pre-wrap' }}>
+                {product.description}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
