@@ -339,56 +339,49 @@ export default function POS() {
 
     const totalQty = groupItems.reduce((sum, i) => sum + i.quantity, 0);
 
-    // Precio unitario base (promedio ponderado de tallas)
-    let baseTotal = 0;
     const sizeQuantities = {};
     groupItems.forEach(i => {
       sizeQuantities[i.selectedSize] = (sizeQuantities[i.selectedSize] || 0) + i.quantity;
     });
-    groupItems.forEach(item => {
-      const size = item.selectedSize;
+
+    // Helper: precio base por item sin ningún descuento
+    const getRegular = (size) => {
       const sd = sizePrices[size];
-      const regularPrice = (sd?.offer_price && sd.offer_price !== '')
+      return (sd?.offer_price && sd.offer_price !== '')
         ? parseFloat(sd.offer_price)
         : ((sd?.price && sd.price !== '')
           ? parseFloat(sd.price)
           : (product.offer_price !== null ? parseFloat(product.offer_price) : parseFloat(product.price)));
-      baseTotal += regularPrice * item.quantity;
-    });
+    };
 
-    // Buscar la mejor promo simple: la de mayor qty que el cliente ya alcanza
-    // (no greedy: se aplica UNA promo al bloque completo, la mejor disponible)
-    const validPromos = [...simplePromos]
-      .filter(p => p.qty && p.price && totalQty >= parseInt(p.qty))
-      .sort((a, b) => parseInt(b.qty) - parseInt(a.qty)); // mayor qty primero = mejor descuento
-
-    if (validPromos.length > 0) {
-      const best = validPromos[0];
-      // precio total = precio promo por unidad × total unidades
-      const promoUnitPrice = parseFloat(best.price) / parseInt(best.qty);
-      return promoUnitPrice * totalQty;
-    }
-
-    // Sin promo: aplicar tiers mayoristas por talla
+    // Opción A: precio total aplicando tiers mayoristas por talla
     let totalWithTiers = 0;
     groupItems.forEach(item => {
       const size = item.selectedSize;
       const sd = sizePrices[size];
-      const regularPrice = (sd?.offer_price && sd.offer_price !== '')
-        ? parseFloat(sd.offer_price)
-        : ((sd?.price && sd.price !== '')
-          ? parseFloat(sd.price)
-          : (product.offer_price !== null ? parseFloat(product.offer_price) : parseFloat(product.price)));
       const sizeTiers = sd?.wholesale_tiers || [];
       const sizeQty = sizeQuantities[size] || 0;
       const matchedTier = [...sizeTiers]
         .sort((a, b) => b.min_qty - a.min_qty)
         .find(t => sizeQty >= t.min_qty);
-      const effectivePrice = matchedTier ? parseFloat(matchedTier.price) : regularPrice;
+      const effectivePrice = matchedTier ? parseFloat(matchedTier.price) : getRegular(size);
       totalWithTiers += effectivePrice * item.quantity;
     });
 
-    return totalWithTiers;
+    // Opción B: mejor promo simple (mayor qty alcanzada = precio por unidad más bajo)
+    const validPromos = [...simplePromos]
+      .filter(p => p.qty && p.price && totalQty >= parseInt(p.qty))
+      .sort((a, b) => parseInt(b.qty) - parseInt(a.qty));
+
+    let totalWithPromo = Infinity;
+    if (validPromos.length > 0) {
+      const best = validPromos[0];
+      const promoUnitPrice = parseFloat(best.price) / parseInt(best.qty);
+      totalWithPromo = promoUnitPrice * totalQty;
+    }
+
+    // Aplicar el que resulte en menor precio total para el cliente
+    return Math.min(totalWithTiers, totalWithPromo);
   };
 
   const getItemUnitPrice = (item, allItems = orderItems) => {
