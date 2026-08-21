@@ -305,15 +305,26 @@ export default function POS() {
     return Array.isArray(tiers) ? tiers : [];
   };
 
-  // Devuelve la promo simple activa dado totalQty (o null si no aplica)
+  // Devuelve la MEJOR promo simple activa dado totalQty (mayor qty alcanzada = mejor descuento)
   const getActivePromo = (prod, totalQty) => {
     const promos = parseTiers(prod).find(t => t.type === 'simple_promos')?.data || [];
-    const sorted = [...promos].filter(p => p.qty && p.price).sort((a, b) => b.qty - a.qty);
-    // Verifica si alguna promo aplica con la cantidad total
-    for (const p of sorted) {
-      if (totalQty >= parseInt(p.qty)) return p;
-    }
-    return null;
+    const valid = [...promos]
+      .filter(p => p.qty && p.price && totalQty >= parseInt(p.qty))
+      .sort((a, b) => parseInt(b.qty) - parseInt(a.qty));
+    return valid[0] || null;
+  };
+
+  // Precio unitario base de un item (sin promos, sin mayoreo)
+  const getBaseUnitPrice = (item) => {
+    const freshProd = products.find(p => p.id === item.id) || item;
+    const tiers = parseTiers(freshProd);
+    const sizePrices = tiers.find(t => t.type === 'size_prices')?.data || {};
+    const sd = sizePrices[item.selectedSize];
+    return (sd?.offer_price && sd.offer_price !== '')
+      ? parseFloat(sd.offer_price)
+      : ((sd?.price && sd.price !== '')
+        ? parseFloat(sd.price)
+        : (freshProd.offer_price !== null ? parseFloat(freshProd.offer_price) : parseFloat(freshProd.price)));
   };
 
   // Helper: get unit price for an item
@@ -321,80 +332,63 @@ export default function POS() {
   // (distintos colores/tallas) alcanza el minimo mayorista. También aplica precios por talla y promociones simples.
   const getProductGroupTotalPrice = (productId, groupItems, product) => {
     if (!product) return 0;
-    
-    // Extraer configuraciones de tallas y promociones simples (con parseo defensivo)
+
     const tiers = parseTiers(product);
     const sizePrices = tiers.find(t => t.type === 'size_prices')?.data || {};
     const simplePromos = tiers.find(t => t.type === 'simple_promos')?.data || [];
 
     const totalQty = groupItems.reduce((sum, i) => sum + i.quantity, 0);
 
-    // Calcular cantidad por talla en la orden
+    // Precio unitario base (promedio ponderado de tallas)
+    let baseTotal = 0;
     const sizeQuantities = {};
     groupItems.forEach(i => {
       sizeQuantities[i.selectedSize] = (sizeQuantities[i.selectedSize] || 0) + i.quantity;
     });
-
-    // Expandir variantes en unidades individuales
-    const units = [];
     groupItems.forEach(item => {
       const size = item.selectedSize;
-      const sizePriceData = sizePrices[size];
-      
-      const regularPrice = (sizePriceData?.offer_price && sizePriceData.offer_price !== '')
-        ? parseFloat(sizePriceData.offer_price)
-        : ((sizePriceData?.price && sizePriceData.price !== '')
-          ? parseFloat(sizePriceData.price)
+      const sd = sizePrices[size];
+      const regularPrice = (sd?.offer_price && sd.offer_price !== '')
+        ? parseFloat(sd.offer_price)
+        : ((sd?.price && sd.price !== '')
+          ? parseFloat(sd.price)
           : (product.offer_price !== null ? parseFloat(product.offer_price) : parseFloat(product.price)));
-
-      for (let k = 0; k < item.quantity; k++) {
-        units.push({
-          regularPrice,
-          size
-        });
-      }
+      baseTotal += regularPrice * item.quantity;
     });
 
-    // Ordenar promociones por cantidad descendente
-    const sortedPromos = [...simplePromos]
-      .filter(p => p.qty && p.price)
-      .sort((a, b) => b.qty - a.qty);
+    // Buscar la mejor promo simple: la de mayor qty que el cliente ya alcanza
+    // (no greedy: se aplica UNA promo al bloque completo, la mejor disponible)
+    const validPromos = [...simplePromos]
+      .filter(p => p.qty && p.price && totalQty >= parseInt(p.qty))
+      .sort((a, b) => parseInt(b.qty) - parseInt(a.qty)); // mayor qty primero = mejor descuento
 
-    let remainingQty = totalQty;
-    let totalPrice = 0;
-
-    // Aplicar promociones simples de forma codiciosa (greedy)
-    for (const promo of sortedPromos) {
-      const promoQty = parseInt(promo.qty);
-      const promoPrice = parseFloat(promo.price);
-      while (remainingQty >= promoQty) {
-        totalPrice += promoPrice;
-        remainingQty -= promoQty;
-      }
+    if (validPromos.length > 0) {
+      const best = validPromos[0];
+      // precio total = precio promo por unidad × total unidades
+      const promoUnitPrice = parseFloat(best.price) / parseInt(best.qty);
+      return promoUnitPrice * totalQty;
     }
 
-    // Cobrar unidades restantes con precio unitario o mayorista (con variaciones por talla)
-    if (remainingQty > 0) {
-      const remainingUnits = units.slice(0, remainingQty);
-      for (const unit of remainingUnits) {
-        // Evaluar si aplica mayorista para la talla específica
-        const sizeData = sizePrices[unit.size];
-        const sizeTiers = sizeData?.wholesale_tiers || [];
-        const sizeQty = sizeQuantities[unit.size] || 0;
+    // Sin promo: aplicar tiers mayoristas por talla
+    let totalWithTiers = 0;
+    groupItems.forEach(item => {
+      const size = item.selectedSize;
+      const sd = sizePrices[size];
+      const regularPrice = (sd?.offer_price && sd.offer_price !== '')
+        ? parseFloat(sd.offer_price)
+        : ((sd?.price && sd.price !== '')
+          ? parseFloat(sd.price)
+          : (product.offer_price !== null ? parseFloat(product.offer_price) : parseFloat(product.price)));
+      const sizeTiers = sd?.wholesale_tiers || [];
+      const sizeQty = sizeQuantities[size] || 0;
+      const matchedTier = [...sizeTiers]
+        .sort((a, b) => b.min_qty - a.min_qty)
+        .find(t => sizeQty >= t.min_qty);
+      const effectivePrice = matchedTier ? parseFloat(matchedTier.price) : regularPrice;
+      totalWithTiers += effectivePrice * item.quantity;
+    });
 
-        const matchedSizeTier = [...sizeTiers]
-          .sort((a, b) => b.min_qty - a.min_qty)
-          .find(t => sizeQty >= t.min_qty);
-
-        if (matchedSizeTier) {
-          totalPrice += parseFloat(matchedSizeTier.price);
-        } else {
-          totalPrice += unit.regularPrice;
-        }
-      }
-    }
-
-    return totalPrice;
+    return totalWithTiers;
   };
 
   const getItemUnitPrice = (item, allItems = orderItems) => {
@@ -1255,7 +1249,7 @@ export default function POS() {
                 {/* Tabla Header */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: '70px 1fr 100px 80px 100px 70px',
+                  gridTemplateColumns: '60px 1fr 90px 72px 90px 90px 100px 60px',
                   borderBottom: '2px solid #E5E7EB',
                   backgroundColor: '#FAFAFA',
                   fontSize: '12px',
@@ -1263,10 +1257,12 @@ export default function POS() {
                   color: '#6B7280',
                   letterSpacing: '0.02em'
                 }}>
-                  <div style={{ padding: '12px 8px', textAlign: 'center' }}>Cantidad</div>
+                  <div style={{ padding: '12px 8px', textAlign: 'center' }}>Cant.</div>
                   <div style={{ padding: '12px 10px' }}>Detalle</div>
-                  <div style={{ padding: '12px 8px', textAlign: 'right' }}>$/unidad</div>
-                  <div style={{ padding: '12px 8px', textAlign: 'center' }}>% desc.</div>
+                  <div style={{ padding: '12px 8px', textAlign: 'right' }}>P. base</div>
+                  <div style={{ padding: '12px 8px', textAlign: 'center' }}>Desc. %</div>
+                  <div style={{ padding: '12px 8px', textAlign: 'right' }}>Ahorro</div>
+                  <div style={{ padding: '12px 8px', textAlign: 'right' }}>P. final</div>
                   <div style={{ padding: '12px 8px', textAlign: 'right' }}>Subtotal</div>
                   <div style={{ padding: '12px 8px', textAlign: 'center' }}></div>
                 </div>
@@ -1281,24 +1277,29 @@ export default function POS() {
                     </div>
                   ) : (
                     orderItems.map((item, idx) => {
-                      const unitPrice = getItemUnitPrice(item);
-                      const discountPct = itemDiscounts[item.uniqueId] || 0;
-                      const lineSubtotal = unitPrice * item.quantity * (1 - discountPct / 100);
+                      const baseUnitPrice = getBaseUnitPrice(item);          // precio sin promos
+                      const promoUnitPrice = getItemUnitPrice(item);         // precio con mejor promo aplicada
+                      const manualDiscountPct = itemDiscounts[item.uniqueId] || 0;
+                      // Descuento total = promo % + manual %
+                      const promoDiscountPct = baseUnitPrice > 0
+                        ? Math.round(((baseUnitPrice - promoUnitPrice) / baseUnitPrice) * 100)
+                        : 0;
+                      const totalDiscountPct = Math.min(100, promoDiscountPct + manualDiscountPct);
+                      const finalUnitPrice = baseUnitPrice * (1 - totalDiscountPct / 100);
+                      const ahorroUnitario = baseUnitPrice - finalUnitPrice;
+                      const lineSubtotal = finalUnitPrice * item.quantity;
                       const isEditing = editingItemId === item.uniqueId;
-                      // Indicador mayoreo: sumar todas las variantes del mismo producto base
                       const totalQtyBase = orderItems.filter(i => i.id === item.id).reduce((s, i) => s + i.quantity, 0);
-                      const minWholesale = item.wholesale_min_qty || 6;
-                      const isWholesaleActive = item.wholesale_price && totalQtyBase >= minWholesale;
-                      // Indicador promo simple
                       const freshProdForBadge = products.find(p => p.id === item.id) || item;
                       const activePromo = getActivePromo(freshProdForBadge, totalQtyBase);
+                      const isWholesaleActive = item.wholesale_price && totalQtyBase >= (item.wholesale_min_qty || 6);
 
                       return (
                         <div
                           key={item.uniqueId}
                           style={{
                             display: 'grid',
-                            gridTemplateColumns: '70px 1fr 100px 80px 100px 70px',
+                            gridTemplateColumns: '60px 1fr 90px 72px 90px 90px 100px 60px',
                             borderBottom: '1px solid #F3F4F6',
                             alignItems: 'center',
                             fontSize: '13px',
@@ -1314,62 +1315,65 @@ export default function POS() {
                           {/* Detalle */}
                           <div style={{ padding: '10px 10px' }}>
                             <div style={{ fontWeight: 500, fontSize: '13px', lineHeight: 1.3 }}>{item.detailName}</div>
-                            {isWholesaleActive && (
+                            {activePromo && (
+                              <span style={{ fontSize: '10px', fontWeight: 600, color: '#065F46', display: 'block', marginTop: '2px' }}>
+                                Promo {activePromo.qty} uds aplicada
+                              </span>
+                            )}
+                            {isWholesaleActive && !activePromo && (
                               <span style={{ fontSize: '10px', fontWeight: 700, color: '#065F46', backgroundColor: '#D1FAE5', padding: '1px 5px', display: 'inline-block', marginTop: '2px', border: '1px solid #6EE7B7', letterSpacing: '0.03em' }}>
                                 MAYOREO ({totalQtyBase} uds)
                               </span>
                             )}
-                            {activePromo && (
-                              <span style={{ fontSize: '10px', fontWeight: 700, color: '#92400E', backgroundColor: '#FEF3C7', padding: '1px 5px', display: 'inline-block', marginTop: '2px', border: '1px solid #FCD34D', letterSpacing: '0.03em' }}>
-                                🏷 PROMO: {totalQtyBase} uds · S/ {formatNoRound(unitPrice)} c/u
-                              </span>
-                            )}
-                            {item.wholesale_price && !isWholesaleActive && (
-                              <span style={{ fontSize: '10px', color: '#9CA3AF', display: 'block', marginTop: '1px' }}>
-                                Mayoreo desde {minWholesale} uds · llevas {totalQtyBase}
-                              </span>
-                            )}
                           </div>
 
-                          {/* $/unidad */}
-                          <div style={{ padding: '10px 8px', textAlign: 'right', color: '#374151' }}>
-                            S/ {formatNoRound(unitPrice)}
+                          {/* P. base */}
+                          <div style={{ padding: '10px 8px', textAlign: 'right', fontSize: '12px', color: totalDiscountPct > 0 ? '#9CA3AF' : '#374151', textDecoration: totalDiscountPct > 0 ? 'line-through' : 'none' }}>
+                            S/ {formatNoRound(baseUnitPrice)}
                           </div>
 
-                          {/* % desc. */}
+                          {/* Desc. % */}
                           <div style={{ padding: '10px 8px', textAlign: 'center' }}>
                             {isEditing ? (
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                autoFocus
-                                value={discountPct}
-                                onChange={e => {
-                                  const val = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
-                                  setItemDiscounts({ ...itemDiscounts, [item.uniqueId]: val });
-                                }}
-                                onBlur={() => setEditingItemId(null)}
-                                onKeyDown={e => { if (e.key === 'Enter') setEditingItemId(null); }}
-                                style={{
-                                  width: '50px',
-                                  padding: '4px',
-                                  border: '1px solid #D1D5DB',
-                                  borderRadius: '4px',
-                                  textAlign: 'center',
-                                  fontSize: '12px',
-                                  outline: 'none'
-                                }}
-                              />
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
+                                {promoDiscountPct > 0 && (
+                                  <span style={{ fontSize: '9px', color: '#6B7280' }}>Promo: -{promoDiscountPct}%</span>
+                                )}
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  autoFocus
+                                  value={manualDiscountPct}
+                                  onChange={e => {
+                                    const val = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
+                                    setItemDiscounts({ ...itemDiscounts, [item.uniqueId]: val });
+                                  }}
+                                  onBlur={() => setEditingItemId(null)}
+                                  onKeyDown={e => { if (e.key === 'Enter') setEditingItemId(null); }}
+                                  placeholder="Extra %"
+                                  style={{ width: '50px', padding: '3px', border: '1px solid #D1D5DB', borderRadius: '4px', textAlign: 'center', fontSize: '11px', outline: 'none' }}
+                                />
+                              </div>
                             ) : (
-                              <span style={{ color: discountPct > 0 ? '#DC2626' : '#9CA3AF' }}>
-                                {discountPct} %
+                              <span style={{ fontWeight: totalDiscountPct > 0 ? 700 : 400, color: totalDiscountPct > 0 ? '#DC2626' : '#9CA3AF', fontSize: '13px' }}>
+                                {totalDiscountPct > 0 ? `-${totalDiscountPct}%` : '0%'}
                               </span>
                             )}
                           </div>
 
-                          {/* Subtotal */}
-                          <div style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 600, color: '#111' }}>
+                          {/* Ahorro c/u */}
+                          <div style={{ padding: '10px 8px', textAlign: 'right', fontSize: '12px', color: ahorroUnitario > 0 ? '#059669' : '#9CA3AF' }}>
+                            {ahorroUnitario > 0.005 ? `-S/ ${formatNoRound(ahorroUnitario)}` : '—'}
+                          </div>
+
+                          {/* P. final c/u */}
+                          <div style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 600, color: totalDiscountPct > 0 ? '#DC2626' : '#374151', fontSize: '13px' }}>
+                            S/ {formatNoRound(finalUnitPrice)}
+                          </div>
+
+                          {/* Subtotal línea */}
+                          <div style={{ padding: '10px 8px', textAlign: 'right', fontWeight: 700, color: '#111', fontSize: '13px' }}>
                             S/ {formatNoRound(lineSubtotal)}
                           </div>
 
