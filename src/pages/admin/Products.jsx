@@ -88,7 +88,7 @@ export default function Products() {
     if (exists) {
       setForm(f => ({ ...f, colors: f.colors.filter(c => c.hex !== preset.hex) }));
     } else {
-      setForm(f => ({ ...f, colors: [...f.colors, { hex: preset.hex, name: preset.name, stock: 0 }] }));
+      setForm(f => ({ ...f, colors: [...f.colors, { hex: preset.hex, name: preset.name, stock: 0, images: [] }] }));
     }
   };
 
@@ -96,7 +96,7 @@ export default function Products() {
     if (!customColor.name) return;
     const exists = form.colors.find(c => c.hex === customColor.hex);
     if (!exists) {
-      setForm(f => ({ ...f, colors: [...f.colors, { ...customColor, stock: 0 }] }));
+      setForm(f => ({ ...f, colors: [...f.colors, { ...customColor, stock: 0, images: [] }] }));
     }
     const updatedList = await DataService.addPreferredColor(customColor);
     setPreferredColors(updatedList);
@@ -177,7 +177,10 @@ export default function Products() {
       simple_promos: simplePromos,
       size_prices: cleanSizePrices,
       images: prod.images?.length > 0 ? prod.images : [prod.image_url].filter(Boolean),
-      colors: prod.colors || [],
+      colors: (prod.colors || []).map(c => ({
+        ...c,
+        images: c.images?.length > 0 ? c.images : (c.image_url ? [c.image_url] : []),
+      })),
       sizes: prod.sizes || [],
     });
     setEditorTab('general');
@@ -211,7 +214,8 @@ export default function Products() {
     const targetCategoryId = form.category_id || categories[0]?.id || '';
     if (!targetCategoryId) { showMsg('error', 'Crea una categoría primero.'); return; }
     
-    const colorImages = form.colors.map(col => col.image_url).filter(Boolean);
+    // Recoger todas las imágenes de todos los colores (multi-imagen por color)
+    const colorImages = form.colors.flatMap(col => col.images?.length > 0 ? col.images : (col.image_url ? [col.image_url] : []));
     
     // Empacar las promociones simples y precios de talla dentro de wholesale_tiers
     const packedTiers = [
@@ -243,6 +247,12 @@ export default function Products() {
         : parseInt(form.stock) || 0,
       image_url: colorImages[0] || form.image_url || '',
       images: colorImages.length > 0 ? colorImages : [form.image_url].filter(Boolean),
+      // Normalizar cada color: image_url = primera foto, images = array completo
+      colors: form.colors.map(c => ({
+        ...c,
+        image_url: c.images?.[0] || c.image_url || '',
+        images: c.images || [],
+      })),
     };
 
     // Eliminar atributos temporales que no existen en el esquema SQL de Supabase
@@ -770,74 +780,127 @@ export default function Products() {
                                   </button>
                                 </div>
                                 
-                                {/* Foto de este color: subir directa o elegir de galería */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '28px', flexWrap: 'wrap' }}>
-                                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>📸 Foto:</span>
-                                  
-                                  {/* Botón subir foto directa para este color */}
-                                  <label style={{
-                                    padding: '4px 10px', fontSize: '11px', fontWeight: 600,
-                                    border: '1px dashed var(--border-color)', backgroundColor: 'var(--bg-primary)',
-                                    cursor: uploadingColorHex === c.hex ? 'not-allowed' : 'pointer',
-                                    whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                    opacity: uploadingColorHex === c.hex ? 0.6 : 1
-                                  }}>
-                                    {uploadingColorHex === c.hex ? '⏳ Subiendo...' : '⬆ Subir foto'}
-                                    <input 
-                                      type="file" 
-                                      accept="image/*" 
-                                      disabled={uploadingColorHex === c.hex}
-                                      style={{ display: 'none' }}
-                                      onChange={async (e) => {
-                                        const file = e.target.files?.[0]; if (!file) return;
-                                        const targetHex = c.hex;
-                                        setUploadingColorHex(targetHex);
-                                        try {
-                                          const url = await DataService.uploadImage(file);
-                                          setForm(f => {
-                                            const updatedColors = f.colors.map(col => 
-                                              col?.hex?.toLowerCase() === targetHex?.toLowerCase() 
-                                                ? { ...col, image_url: url } 
-                                                : col
-                                            );
-                                            return {
+                                {/* Fotos de este color — múltiples imágenes */}
+                                <div style={{ paddingLeft: '28px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>📸 Fotos ({(c.images || []).length}):</span>
+
+                                    {/* Botón subir foto para este color */}
+                                    <label style={{
+                                      padding: '4px 10px', fontSize: '11px', fontWeight: 600,
+                                      border: '1px dashed var(--border-color)', backgroundColor: 'var(--bg-primary)',
+                                      cursor: uploadingColorHex === c.hex ? 'not-allowed' : 'pointer',
+                                      whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                      opacity: uploadingColorHex === c.hex ? 0.6 : 1
+                                    }}>
+                                      {uploadingColorHex === c.hex ? '⏳ Subiendo...' : '⬆ Agregar foto'}
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        multiple
+                                        disabled={uploadingColorHex === c.hex}
+                                        style={{ display: 'none' }}
+                                        onChange={async (e) => {
+                                          const files = Array.from(e.target.files || []);
+                                          if (!files.length) return;
+                                          const targetHex = c.hex;
+                                          setUploadingColorHex(targetHex);
+                                          try {
+                                            const urls = await Promise.all(files.map(f => DataService.uploadImage(f)));
+                                            setForm(f => ({
                                               ...f,
-                                              image_url: f.image_url || url,
-                                              images: [...(f.images || []), url],
-                                              colors: updatedColors
-                                            };
-                                          });
-                                        } catch (err) { 
-                                          console.error(err);
-                                          window.alert(`Error al subir imagen:\n${err.message || 'Error desconocido'}`); 
-                                        } finally {
-                                          setUploadingColorHex(null);
-                                        }
-                                      }}
-                                    />
-                                  </label>
+                                              colors: f.colors.map(col =>
+                                                col?.hex?.toLowerCase() === targetHex?.toLowerCase()
+                                                  ? { ...col, images: [...(col.images || []), ...urls] }
+                                                  : col
+                                              )
+                                            }));
+                                          } catch (err) {
+                                            console.error(err);
+                                            window.alert(`Error al subir imagen:\n${err.message || 'Error desconocido'}`);
+                                          } finally {
+                                            setUploadingColorHex(null);
+                                            e.target.value = '';
+                                          }
+                                        }}
+                                      />
+                                    </label>
+                                  </div>
 
-
-
-                                  {/* Preview de la imagen asociada */}
-                                  {c.image_url ? (
-                                    <div style={{ position: 'relative', flexShrink: 0 }}>
-                                      <img src={c.image_url} alt="" style={{ width: '36px', height: '44px', objectFit: 'cover', border: '1px solid var(--border-color)' }} />
-                                      <button type="button" onClick={() => {
-                                        setForm(f => ({
-                                          ...f,
-                                          colors: f.colors.map(col => col?.hex?.toLowerCase() === c?.hex?.toLowerCase() ? { ...col, image_url: '' } : col)
-                                        }));
-                                      }} style={{
-                                        position: 'absolute', top: '-5px', right: '-5px',
-                                        backgroundColor: '#FF4D6D', color: '#FFF', border: 'none', borderRadius: '50%',
-                                        width: '14px', height: '14px', cursor: 'pointer', display: 'flex',
-                                        alignItems: 'center', justifyContent: 'center', fontSize: '8px',
-                                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
-                                      }}>✕</button>
+                                  {/* Grid de previews */}
+                                  {(c.images || []).length > 0 ? (
+                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                      {(c.images || []).map((imgUrl, imgIdx) => (
+                                        <div key={imgIdx} style={{ position: 'relative', flexShrink: 0 }}>
+                                          <img
+                                            src={imgUrl}
+                                            alt=""
+                                            style={{
+                                              width: '52px', height: '64px', objectFit: 'cover',
+                                              border: imgIdx === 0 ? '2px solid var(--text-primary)' : '1px solid var(--border-color)'
+                                            }}
+                                          />
+                                          {imgIdx === 0 && (
+                                            <span style={{
+                                              position: 'absolute', bottom: '2px', left: '2px',
+                                              fontSize: '8px', backgroundColor: 'rgba(0,0,0,0.6)', color: '#FFF',
+                                              padding: '1px 3px', fontWeight: 700, letterSpacing: '0.04em'
+                                            }}>MAIN</span>
+                                          )}
+                                          <button
+                                            type="button"
+                                            title="Eliminar foto"
+                                            onClick={() => {
+                                              const targetHex = c.hex;
+                                              setForm(f => ({
+                                                ...f,
+                                                colors: f.colors.map(col =>
+                                                  col?.hex?.toLowerCase() === targetHex?.toLowerCase()
+                                                    ? { ...col, images: col.images.filter((_, i) => i !== imgIdx) }
+                                                    : col
+                                                )
+                                              }));
+                                            }}
+                                            style={{
+                                              position: 'absolute', top: '-5px', right: '-5px',
+                                              backgroundColor: '#FF4D6D', color: '#FFF', border: 'none', borderRadius: '50%',
+                                              width: '16px', height: '16px', cursor: 'pointer', display: 'flex',
+                                              alignItems: 'center', justifyContent: 'center', fontSize: '9px',
+                                              fontWeight: 'bold', boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                                            }}
+                                          >✕</button>
+                                          {imgIdx > 0 && (
+                                            <button
+                                              type="button"
+                                              title="Mover a principal"
+                                              onClick={() => {
+                                                const targetHex = c.hex;
+                                                setForm(f => ({
+                                                  ...f,
+                                                  colors: f.colors.map(col => {
+                                                    if (col?.hex?.toLowerCase() !== targetHex?.toLowerCase()) return col;
+                                                    const newImages = [...col.images];
+                                                    const [moved] = newImages.splice(imgIdx, 1);
+                                                    newImages.unshift(moved);
+                                                    return { ...col, images: newImages };
+                                                  })
+                                                }));
+                                              }}
+                                              style={{
+                                                position: 'absolute', bottom: '-5px', right: '-5px',
+                                                backgroundColor: '#2563EB', color: '#FFF', border: 'none', borderRadius: '50%',
+                                                width: '16px', height: '16px', cursor: 'pointer', display: 'flex',
+                                                alignItems: 'center', justifyContent: 'center', fontSize: '9px',
+                                                fontWeight: 'bold', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                                                title: 'Poner como principal'
+                                              }}
+                                            >★</button>
+                                          )}
+                                        </div>
+                                      ))}
                                     </div>
                                   ) : (
-                                    <span style={{ fontSize: '10px', color: '#B0B0B0', fontStyle: 'italic' }}>Sin foto</span>
+                                    <span style={{ fontSize: '10px', color: '#B0B0B0', fontStyle: 'italic' }}>Sin fotos — la primera foto agregada será la principal</span>
                                   )}
                                 </div>
                                 {form.sizes.length > 0 ? (
