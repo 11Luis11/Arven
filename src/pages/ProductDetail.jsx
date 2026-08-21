@@ -30,15 +30,23 @@ export default function ProductDetail({ onOpenCart }) {
 
       if (found) {
         setProduct(found);
-        const imgList = found.images && found.images.length > 0 ? found.images : [found.image_url];
-        setActiveImage(imgList[0]);
-        setActiveImageIdx(0);
 
         if (found.colors && found.colors.length > 0) {
-          setSelectedColor(found.colors[0]);
-          if (found.colors[0].image_url) setActiveImage(found.colors[0].image_url);
+          const firstColor = found.colors[0];
+          setSelectedColor(firstColor);
+          // Usar el array de imágenes del primer color
+          const colorImgs = firstColor.images?.length > 0
+            ? firstColor.images
+            : (firstColor.image_url ? [firstColor.image_url] : []);
+          const fallback = found.images?.length > 0 ? found.images : [found.image_url].filter(Boolean);
+          const initImgs = colorImgs.length > 0 ? colorImgs : fallback;
+          setActiveImage(initImgs[0] || '');
+          setActiveImageIdx(0);
         } else {
           setSelectedColor(null);
+          const imgList = found.images?.length > 0 ? found.images : [found.image_url].filter(Boolean);
+          setActiveImage(imgList[0] || '');
+          setActiveImageIdx(0);
         }
 
         if (found.sizes && found.sizes.length > 0) {
@@ -149,7 +157,16 @@ export default function ProductDetail({ onOpenCart }) {
     ? parseFloat(sizeData.price)
     : ((product.offer_price && (!sizeData?.price || sizeData.price === '')) ? product.price : null);
 
-  const imageList = product.images && product.images.length > 0 ? product.images : [product.image_url];
+  // Galería: usa las fotos del color seleccionado; si no hay colores, las del producto
+  const imageList = (() => {
+    if (selectedColor) {
+      const colorImgs = selectedColor.images?.length > 0
+        ? selectedColor.images
+        : (selectedColor.image_url ? [selectedColor.image_url] : []);
+      if (colorImgs.length > 0) return colorImgs;
+    }
+    return product.images?.length > 0 ? product.images : [product.image_url].filter(Boolean);
+  })();
 
   // Navegación mobile de imágenes
   const goNextImg = () => {
@@ -435,7 +452,17 @@ export default function ProductDetail({ onOpenCart }) {
                   return (
                     <button
                       key={c.hex}
-                      onClick={() => { setSelectedColor(c); if (c.image_url) setActiveImage(c.image_url); }}
+                      onClick={() => {
+                        setSelectedColor(c);
+                        // Cargar las fotos de este color y resetear la galería
+                        const colorImgs = c.images?.length > 0
+                          ? c.images
+                          : (c.image_url ? [c.image_url] : []);
+                        if (colorImgs.length > 0) {
+                          setActiveImage(colorImgs[0]);
+                          setActiveImageIdx(0);
+                        }
+                      }}
                       title={c.name}
                       style={{
                         width: '36px', height: '36px', borderRadius: '50%', backgroundColor: c.hex,
