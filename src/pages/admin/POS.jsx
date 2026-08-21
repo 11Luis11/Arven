@@ -297,15 +297,35 @@ export default function POS() {
     setTimeout(() => setSuccessMsg(''), 3000);
   };
 
+  // Parsea wholesale_tiers de forma segura (puede llegar como string JSON desde Supabase)
+  const parseTiers = (prod) => {
+    let tiers = prod?.wholesale_tiers;
+    if (!tiers) return [];
+    if (typeof tiers === 'string') { try { tiers = JSON.parse(tiers); } catch { return []; } }
+    return Array.isArray(tiers) ? tiers : [];
+  };
+
+  // Devuelve la promo simple activa dado totalQty (o null si no aplica)
+  const getActivePromo = (prod, totalQty) => {
+    const promos = parseTiers(prod).find(t => t.type === 'simple_promos')?.data || [];
+    const sorted = [...promos].filter(p => p.qty && p.price).sort((a, b) => b.qty - a.qty);
+    // Verifica si alguna promo aplica con la cantidad total
+    for (const p of sorted) {
+      if (totalQty >= parseInt(p.qty)) return p;
+    }
+    return null;
+  };
+
   // Helper: get unit price for an item
   // El descuento mayorista aplica si la suma total de variantes del MISMO producto base
   // (distintos colores/tallas) alcanza el minimo mayorista. También aplica precios por talla y promociones simples.
   const getProductGroupTotalPrice = (productId, groupItems, product) => {
     if (!product) return 0;
     
-    // Extraer configuraciones de tallas y promociones simples
-    const sizePrices = (product.wholesale_tiers || []).find(t => t.type === 'size_prices')?.data || {};
-    const simplePromos = (product.wholesale_tiers || []).find(t => t.type === 'simple_promos')?.data || [];
+    // Extraer configuraciones de tallas y promociones simples (con parseo defensivo)
+    const tiers = parseTiers(product);
+    const sizePrices = tiers.find(t => t.type === 'size_prices')?.data || {};
+    const simplePromos = tiers.find(t => t.type === 'simple_promos')?.data || [];
 
     const totalQty = groupItems.reduce((sum, i) => sum + i.quantity, 0);
 
@@ -383,7 +403,7 @@ export default function POS() {
     const totalQty = groupItems.reduce((sum, i) => sum + i.quantity, 0);
     
     if (totalQty === 0) {
-      const sizePrices = (freshProd.wholesale_tiers || []).find(t => t.type === 'size_prices')?.data || {};
+      const sizePrices = parseTiers(freshProd).find(t => t.type === 'size_prices')?.data || {};
       const sizeData = sizePrices[item.selectedSize];
       const basePrice = (sizeData?.offer_price && sizeData.offer_price !== '')
         ? parseFloat(sizeData.offer_price)
@@ -1269,6 +1289,9 @@ export default function POS() {
                       const totalQtyBase = orderItems.filter(i => i.id === item.id).reduce((s, i) => s + i.quantity, 0);
                       const minWholesale = item.wholesale_min_qty || 6;
                       const isWholesaleActive = item.wholesale_price && totalQtyBase >= minWholesale;
+                      // Indicador promo simple
+                      const freshProdForBadge = products.find(p => p.id === item.id) || item;
+                      const activePromo = getActivePromo(freshProdForBadge, totalQtyBase);
 
                       return (
                         <div
@@ -1294,6 +1317,11 @@ export default function POS() {
                             {isWholesaleActive && (
                               <span style={{ fontSize: '10px', fontWeight: 700, color: '#065F46', backgroundColor: '#D1FAE5', padding: '1px 5px', display: 'inline-block', marginTop: '2px', border: '1px solid #6EE7B7', letterSpacing: '0.03em' }}>
                                 MAYOREO ({totalQtyBase} uds)
+                              </span>
+                            )}
+                            {activePromo && (
+                              <span style={{ fontSize: '10px', fontWeight: 700, color: '#92400E', backgroundColor: '#FEF3C7', padding: '1px 5px', display: 'inline-block', marginTop: '2px', border: '1px solid #FCD34D', letterSpacing: '0.03em' }}>
+                                🏷 PROMO: {totalQtyBase} uds · S/ {formatNoRound(unitPrice)} c/u
                               </span>
                             )}
                             {item.wholesale_price && !isWholesaleActive && (
